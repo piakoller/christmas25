@@ -181,12 +181,18 @@ def main_app():
                     st.write(f"[Link zum Produkt]({wish['link']})")
                 
                 # Display images
-                if wish.get('images'):
-                    cols = st.columns(min(len(wish['images']), 3))
-                    for idx, img in enumerate(wish['images']):
-                        with cols[idx % 3]:
-                            image_bytes = base64.b64decode(img['data'])
-                            st.image(image_bytes, use_container_width=True)
+                if wish.get('images') and isinstance(wish['images'], list) and len(wish['images']) > 0:
+                    try:
+                        # Filter out non-dict items (old format compatibility)
+                        valid_images = [img for img in wish['images'] if isinstance(img, dict) and 'data' in img]
+                        if valid_images:
+                            cols = st.columns(min(len(valid_images), 3))
+                            for idx, img in enumerate(valid_images):
+                                with cols[idx % 3]:
+                                    image_bytes = base64.b64decode(img['data'])
+                                    st.image(image_bytes, use_container_width=True)
+                    except Exception as e:
+                        pass  # Silently skip if image decoding fails
                 
                 # Edit and Delete buttons
                 col_edit, col_delete = st.columns(2)
@@ -263,12 +269,18 @@ def main_app():
                         st.write(f"[Link]({wish['link']})")
                     
                     # Display images
-                    if wish.get('images'):
-                        cols = st.columns(min(len(wish['images']), 3))
-                        for idx, img in enumerate(wish['images']):
-                            with cols[idx % 3]:
-                                image_bytes = base64.b64decode(img['data'])
-                                st.image(image_bytes, use_container_width=True)
+                    if wish.get('images') and isinstance(wish['images'], list) and len(wish['images']) > 0:
+                        try:
+                            # Filter out non-dict items (old format compatibility)
+                            valid_images = [img for img in wish['images'] if isinstance(img, dict) and 'data' in img]
+                            if valid_images:
+                                cols = st.columns(min(len(valid_images), 3))
+                                for idx, img in enumerate(valid_images):
+                                    with cols[idx % 3]:
+                                        image_bytes = base64.b64decode(img['data'])
+                                        st.image(image_bytes, use_container_width=True)
+                        except Exception as e:
+                            pass  # Silently skip if image decoding fails
 
                     if wish["claimed_by"] is None:
                         if st.button("Ich besorge das!", key=f"claim_{wish['id']}"):
@@ -299,12 +311,18 @@ def main_app():
                     st.write(f"[Link zum Produkt]({task['link']})")
                 
                 # Display images
-                if task.get('images'):
-                    cols = st.columns(min(len(task['images']), 3))
-                    for idx, img in enumerate(task['images']):
-                        with cols[idx % 3]:
-                            image_bytes = base64.b64decode(img['data'])
-                            st.image(image_bytes, use_container_width=True)
+                if task.get('images') and isinstance(task['images'], list) and len(task['images']) > 0:
+                    try:
+                        # Filter out non-dict items (old format compatibility)
+                        valid_images = [img for img in task['images'] if isinstance(img, dict) and 'data' in img]
+                        if valid_images:
+                            cols = st.columns(min(len(valid_images), 3))
+                            for idx, img in enumerate(valid_images):
+                                with cols[idx % 3]:
+                                    image_bytes = base64.b64decode(img['data'])
+                                    st.image(image_bytes, use_container_width=True)
+                    except Exception as e:
+                        pass  # Silently skip if image decoding fails
                 
                 # Check if already purchased by expert
                 if task.get("claimed_by") == st.session_state['username'] and task.get("purchased"):
