@@ -1,0 +1,52 @@
+[
+    {
+        "id": "0db85008-1ceb-413d-90bc-c91c12bdb28d",
+        "owner_user": "Pia",
+        "wish_name": "Socken",
+        "link": "",
+        "description": "Plüsch",
+        "note": "39-42",
+        "color": "Grün",
+        "buy_self": false,
+        "others_can_buy": true,
+        "images": [
+            "C:\\Users\\pia\\AppData\\Local\\Temp\\gradio\\7d88c7945532b82b9c5adc9aa8400c875c22764ecc8f5a65f7fec8099d2426a6\\image 11.png"
+        ],
+        "responsible_person": "Tim",
+        "claimed_by": "Dieter",
+        "claimed_at": "2025-11-15T11:38:46.382065",
+        "purchased": true
+    },
+    {
+        "id": "94446e13-580c-4fca-9eef-d4620159e50b",
+        "owner_user": "Tim",
+        "wish_name": "Spiel",
+        "link": "https://www.amazon.de/dp/B0036OR1B8/ref=sspa_dk_detail_6?psc=1&pd_rd_i=B0036OR1B8&pd_rd_w=LQQoa&content-id=amzn1.sym.bf6dbf94-e926-4351-8952-c09f45cdef70&pf_rd_p=bf6dbf94-e926-4351-8952-c09f45cdef70&pf_rd_r=KF5DCABBW2NBG8WBRQ8H&pd_rd_wg=DHFw1&pd_rd_r=8ea8ccc7-8914-4e33-8978-7d86cd6d8615&s=toys&sp_csd=d2lkZ2V0TmFtZT1zcF9kZXRhaWw",
+        "description": "",
+        "note": "",
+        "color": "",
+        "buy_self": true,
+        "others_can_buy": false,
+        "images": [],
+        "responsible_person": null,
+        "claimed_by": null,
+        "claimed_at": null,
+        "purchased": false
+    },
+    {
+        "id": "7ee23191-dcee-49d4-aff0-3f968f4bc217",
+        "owner_user": "Dieter",
+        "wish_name": "Test",
+        "link": "test",
+        "description": "test",
+        "note": "",
+        "color": "",
+        "buy_self": false,
+        "others_can_buy": true,
+        "images": [],
+        "responsible_person": null,
+        "claimed_by": null,
+        "claimed_at": null,
+        "purchased": false
+    }
+]
