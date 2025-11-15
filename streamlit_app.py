@@ -16,6 +16,7 @@ USER_CREDENTIALS = {
     "Pia": "pia123", "Emmy": "emmy123", "Tim": "tim123"
 }
 ALL_USERS = list(USER_CREDENTIALS.keys())
+SUPER_USERS = ["Dieter", "Gudrun"]
 DATA_FILE = Path("wunschliste.json")
 
 # --- Data Persistence ---
@@ -62,6 +63,8 @@ def main_app():
     # Load data into session state if not already present
     if 'data' not in st.session_state:
         st.session_state['data'] = load_data()
+    if 'edit_wish_id' not in st.session_state:
+        st.session_state['edit_wish_id'] = None
 
     # Define columns for layout
     col1, col2 = st.columns(2)
@@ -69,39 +72,68 @@ def main_app():
     # --- Column 1: My Wishes & My Gifts ---
     with col1:
         # --- Add/Edit Wish Form ---
-        with st.expander("📝 Neuen Wunsch hinzufügen / Bearbeiten", expanded=True):
-            with st.form("wish_form", clear_on_submit=True):
-                wish_name = st.text_input("Was wünschst du dir?")
-                wish_desc = st.text_area("Beschreibung")
-                wish_link = st.text_input("Link (optional)")
-                wish_price = st.number_input("Preis (€)", min_value=0.0, format="%.2f")
-                buy_option = st.radio(
-                    "Wer soll es besorgen?",
-                    ("Andere dürfen es kaufen", "Ich kaufe es selbst"),
-                    horizontal=True
-                )
-                # Streamlit's file uploader is different, simplified for now
-                # image_upload = st.file_uploader("Bilder hochladen", accept_multiple_files=True)
+        with st.expander("📝 Wunsch hinzufügen / Bearbeiten", expanded=True):
+            
+            edit_mode = st.session_state.edit_wish_id is not None
+            wish_to_edit = next((w for w in st.session_state.data if w['id'] == st.session_state.edit_wish_id), None) if edit_mode else None
+
+            with st.form("wish_form"):
+                st.subheader("Neuen Wunsch hinzufügen" if not edit_mode else "Wunsch bearbeiten")
+                
+                wish_name = st.text_input("Was wünschst du dir?", value=wish_to_edit.get("wish_name", "") if wish_to_edit else "")
+                wish_desc = st.text_area("Beschreibung", value=wish_to_edit.get("description", "") if wish_to_edit else "")
+                wish_link = st.text_input("Link (optional)", value=wish_to_edit.get("link", "") if wish_to_edit else "")
+                wish_price = st.number_input("Preis (€)", min_value=0.0, value=wish_to_edit.get("price", 0.0) if wish_to_edit else 0.0, format="%.2f")
+                
+                buy_options = ("Andere dürfen es kaufen", "Ich kaufe es selbst")
+                buy_option_index = 1 if (wish_to_edit and wish_to_edit.get("buy_self")) else 0
+                buy_option = st.radio("Wer soll es besorgen?", buy_options, index=buy_option_index, horizontal=True)
                 
                 other_users = [user for user in ALL_USERS if user != st.session_state['username']]
-                responsible_person = st.selectbox("Experte (optional)", [""] + other_users)
+                expert_options = [""] + other_users
+                responsible = wish_to_edit.get("responsible_person") if wish_to_edit else None
+                expert_index = expert_options.index(responsible) if responsible and responsible in expert_options else 0
+                responsible_person = st.selectbox("Experte (optional)", expert_options, index=expert_index)
 
-                submit_button = st.form_submit_button("Wunsch hinzufügen")
+                col_submit, col_cancel = st.columns(2)
+                with col_submit:
+                    submit_button = st.form_submit_button("💾 Änderungen speichern" if edit_mode else "➕ Wunsch hinzufügen")
+                with col_cancel:
+                    if edit_mode:
+                        if st.form_submit_button("❌ Abbrechen"):
+                            st.session_state.edit_wish_id = None
+                            st.rerun()
 
                 if submit_button and wish_name and wish_desc:
-                    is_for_others = buy_option == "Andere dürfen es kaufen"
-                    new_wish = {
-                        "id": str(uuid.uuid4()), "owner_user": st.session_state['username'],
-                        "wish_name": wish_name, "link": wish_link, "description": wish_desc,
-                        "price": wish_price,
-                        "note": "", "color": "", "buy_self": not is_for_others,
-                        "others_can_buy": is_for_others, "images": [], 
-                        "responsible_person": responsible_person if responsible_person else None,
-                        "claimed_by": None, "claimed_at": None, "purchased": False,
-                    }
-                    st.session_state['data'].append(new_wish)
-                    save_data(st.session_state['data'])
-                    st.success(f"Wunsch '{wish_name}' hinzugefügt!")
+                    if edit_mode:
+                        # Update existing wish
+                        for wish in st.session_state.data:
+                            if wish['id'] == st.session_state.edit_wish_id:
+                                wish.update({
+                                    "wish_name": wish_name, "description": wish_desc, "link": wish_link,
+                                    "price": wish_price, "buy_self": buy_option == "Ich kaufe es selbst",
+                                    "others_can_buy": buy_option == "Andere dürfen es kaufen",
+                                    "responsible_person": responsible_person if responsible_person else None,
+                                })
+                                break
+                        save_data(st.session_state.data)
+                        st.success("Wunsch aktualisiert!")
+                        st.session_state.edit_wish_id = None
+                    else:
+                        # Add new wish
+                        new_wish = {
+                            "id": str(uuid.uuid4()), "owner_user": st.session_state['username'],
+                            "wish_name": wish_name, "link": wish_link, "description": wish_desc,
+                            "price": wish_price, "note": "", "color": "", 
+                            "buy_self": buy_option == "Ich kaufe es selbst",
+                            "others_can_buy": buy_option == "Andere dürfen es kaufen",
+                            "images": [], "responsible_person": responsible_person if responsible_person else None,
+                            "claimed_by": None, "claimed_at": None, "purchased": False,
+                        }
+                        st.session_state.data.append(new_wish)
+                        save_data(st.session_state.data)
+                        st.success(f"Wunsch '{wish_name}' hinzugefügt!")
+                    
                     st.rerun()
 
         # --- Display My Wishes ---
@@ -124,11 +156,17 @@ def main_app():
                 if wish['link']:
                     st.write(f"[Link zum Produkt]({wish['link']})")
                 
-                # Delete button
-                if st.button(f"🗑️ Löschen", key=f"del_{wish['id']}"):
-                    st.session_state['data'] = [w for w in st.session_state['data'] if w['id'] != wish['id']]
-                    save_data(st.session_state['data'])
-                    st.rerun()
+                # Edit and Delete buttons
+                col_edit, col_delete = st.columns(2)
+                with col_edit:
+                    if st.button(f"✏️ Bearbeiten", key=f"edit_{wish['id']}"):
+                        st.session_state.edit_wish_id = wish['id']
+                        st.rerun()
+                with col_delete:
+                    if st.button(f"🗑️ Löschen", key=f"del_{wish['id']}"):
+                        st.session_state['data'] = [w for w in st.session_state['data'] if w['id'] != wish['id']]
+                        save_data(st.session_state['data'])
+                        st.rerun()
 
         # --- Display My Claimed Items ---
         st.header("📋 Meine Besorgungen")
@@ -141,15 +179,27 @@ def main_app():
             with st.container(border=True):
                 st.subheader(f"{item['wish_name']} (für {item['owner_user']})")
                 if item.get("purchased"):
-                    st.success("✅ Schon besorgt")
+                    actual_price = item.get("actual_price", 0)
+                    st.success(f"✅ Schon besorgt ({actual_price:.2f}€)")
                 else:
-                    if st.button("✓ Als gekauft markieren", key=f"buy_{item['id']}"):
-                        for w in st.session_state['data']:
-                            if w['id'] == item['id']:
-                                w['purchased'] = True
-                                break
-                        save_data(st.session_state['data'])
-                        st.rerun()
+                    estimated_price = item.get("price", 0.0)
+                    with st.form(key=f"purchase_form_{item['id']}"):
+                        st.write(f"Geschätzter Preis: {estimated_price:.2f}€")
+                        actual_price = st.number_input(
+                            "Tatsächlicher Preis (€)", 
+                            min_value=0.0, 
+                            value=estimated_price,
+                            format="%.2f",
+                            key=f"price_input_{item['id']}"
+                        )
+                        if st.form_submit_button("✓ Als gekauft markieren"):
+                            for w in st.session_state['data']:
+                                if w['id'] == item['id']:
+                                    w['purchased'] = True
+                                    w['actual_price'] = actual_price
+                                    break
+                            save_data(st.session_state['data'])
+                            st.rerun()
 
     # --- Column 2: Others' Wishlists ---
     with col2:
@@ -204,9 +254,109 @@ def main_app():
         for task in my_expert_tasks:
             with st.container(border=True):
                 st.subheader(f"{task['wish_name']} (für {task['owner_user']})")
-                st.write(f"**Wunsch:** {task['description']}")
-                st.write(f"Du wurdest als Experte für diesen Wunsch benannt. Bitte hilf bei der Auswahl oder besorge das Geschenk.")
-                # You could add claim/purchased buttons here as well if the expert should also be the buyer
+                st.write(f"**Beschreibung:** {task['description']}")
+                if task['link']:
+                    st.write(f"[Link zum Produkt]({task['link']})")
+                
+                # Check if already purchased by expert
+                if task.get("claimed_by") == st.session_state['username'] and task.get("purchased"):
+                    actual_price = task.get("actual_price", 0)
+                    st.success(f"✅ Du hast dieses Geschenk besorgt ({actual_price:.2f}€)")
+                # Check if expert has claimed it but not purchased yet
+                elif task.get("claimed_by") == st.session_state['username']:
+                    estimated_price = task.get("price", 0.0)
+                    with st.form(key=f"expert_purchase_form_{task['id']}"):
+                        st.write(f"Geschätzter Preis: {estimated_price:.2f}€")
+                        actual_price = st.number_input(
+                            "Tatsächlicher Preis (€)", 
+                            min_value=0.0, 
+                            value=estimated_price,
+                            format="%.2f",
+                            key=f"expert_price_input_{task['id']}"
+                        )
+                        if st.form_submit_button("✓ Als gekauft markieren"):
+                            for w in st.session_state['data']:
+                                if w['id'] == task['id']:
+                                    w['purchased'] = True
+                                    w['actual_price'] = actual_price
+                                    break
+                            save_data(st.session_state['data'])
+                            st.rerun()
+                # Check if someone else has claimed it
+                elif task.get("claimed_by") and task.get("claimed_by") != st.session_state['username']:
+                    st.info(f"Wird bereits von {task['claimed_by']} besorgt.")
+                # Not claimed yet - allow expert to claim
+                else:
+                    if st.button("Ich besorge das!", key=f"expert_claim_{task['id']}"):
+                        for w in st.session_state['data']:
+                            if w['id'] == task['id']:
+                                w['claimed_by'] = st.session_state['username']
+                                w['claimed_at'] = datetime.datetime.now().isoformat()
+                                break
+                        save_data(st.session_state['data'])
+                        st.rerun()
+
+        # --- Cost Summary Table ---
+        st.header("💰 Meine Ausgaben")
+        purchased_items = [
+            w for w in st.session_state['data'] 
+            if w.get("claimed_by") == st.session_state['username'] and w.get("purchased")
+        ]
+
+        if not purchased_items:
+            st.info("Du hast noch keine Geschenke als gekauft markiert.")
+        else:
+            import pandas as pd
+            
+            table_data = []
+            for item in purchased_items:
+                table_data.append({
+                    "Geschenk": item['wish_name'],
+                    "Für": item['owner_user'],
+                    "Geschätzter Preis": f"{item.get('price', 0.0):.2f}€",
+                    "Tatsächlicher Preis": f"{item.get('actual_price', 0.0):.2f}€"
+                })
+            
+            df = pd.DataFrame(table_data)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            total_spent = sum(item.get('actual_price', 0.0) for item in purchased_items)
+            st.markdown(f"### **Gesamtausgaben: {total_spent:.2f}€**")
+
+        # --- Super User View: See Others' Spending ---
+        if st.session_state['username'] in SUPER_USERS:
+            st.header("👑 Admin: Ausgaben aller Benutzer")
+            
+            # Determine which users to show (all except self and the other super user)
+            other_super_user = [u for u in SUPER_USERS if u != st.session_state['username']][0] if len(SUPER_USERS) > 1 else None
+            users_to_show = [u for u in ALL_USERS if u != st.session_state['username'] and u != other_super_user]
+            
+            for user in users_to_show:
+                user_purchased = [
+                    w for w in st.session_state['data'] 
+                    if w.get("claimed_by") == user and w.get("purchased")
+                ]
+                
+                if user_purchased:
+                    with st.expander(f"💰 {user}s Ausgaben"):
+                        import pandas as pd
+                        
+                        table_data = []
+                        for item in user_purchased:
+                            table_data.append({
+                                "Geschenk": item['wish_name'],
+                                "Für": item['owner_user'],
+                                "Geschätzter Preis": f"{item.get('price', 0.0):.2f}€",
+                                "Tatsächlicher Preis": f"{item.get('actual_price', 0.0):.2f}€"
+                            })
+                        
+                        df = pd.DataFrame(table_data)
+                        st.dataframe(df, use_container_width=True, hide_index=True)
+                        
+                        user_total = sum(item.get('actual_price', 0.0) for item in user_purchased)
+                        st.markdown(f"**{user} Gesamt: {user_total:.2f}€**")
+                else:
+                    st.info(f"{user} hat noch keine Geschenke als gekauft markiert.")
 
 # --- App Entry Point ---
 if "authenticated" not in st.session_state:
