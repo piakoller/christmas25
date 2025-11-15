@@ -74,6 +74,7 @@ def main_app():
                 wish_name = st.text_input("Was wünschst du dir?")
                 wish_desc = st.text_area("Beschreibung")
                 wish_link = st.text_input("Link (optional)")
+                wish_price = st.number_input("Preis (€)", min_value=0.0, format="%.2f")
                 buy_option = st.radio(
                     "Wer soll es besorgen?",
                     ("Andere dürfen es kaufen", "Ich kaufe es selbst"),
@@ -82,6 +83,9 @@ def main_app():
                 # Streamlit's file uploader is different, simplified for now
                 # image_upload = st.file_uploader("Bilder hochladen", accept_multiple_files=True)
                 
+                other_users = [user for user in ALL_USERS if user != st.session_state['username']]
+                responsible_person = st.selectbox("Experte (optional)", [""] + other_users)
+
                 submit_button = st.form_submit_button("Wunsch hinzufügen")
 
                 if submit_button and wish_name and wish_desc:
@@ -89,8 +93,10 @@ def main_app():
                     new_wish = {
                         "id": str(uuid.uuid4()), "owner_user": st.session_state['username'],
                         "wish_name": wish_name, "link": wish_link, "description": wish_desc,
+                        "price": wish_price,
                         "note": "", "color": "", "buy_self": not is_for_others,
-                        "others_can_buy": is_for_others, "images": [], "responsible_person": None,
+                        "others_can_buy": is_for_others, "images": [], 
+                        "responsible_person": responsible_person if responsible_person else None,
                         "claimed_by": None, "claimed_at": None, "purchased": False,
                     }
                     st.session_state['data'].append(new_wish)
@@ -112,7 +118,8 @@ def main_app():
                 status = "🛍️ Kaufe ich selbst"
 
             with st.container(border=True):
-                st.subheader(f"{wish['wish_name']} {status}")
+                price_display = f"({wish['price']:.2f}€)" if wish.get('price') else ""
+                st.subheader(f"{wish['wish_name']} {price_display} {status}")
                 st.write(wish['description'])
                 if wish['link']:
                     st.write(f"[Link zum Produkt]({wish['link']})")
@@ -167,7 +174,8 @@ def main_app():
             st.subheader(f"Wünsche von {owner}")
             for wish in wishes:
                 with st.container(border=True):
-                    st.write(f"**{wish['wish_name']}**")
+                    price_display = f"({wish['price']:.2f}€)" if wish.get('price') else ""
+                    st.write(f"**{wish['wish_name']}** {price_display}")
                     st.write(wish['description'])
                     if wish['link']:
                         st.write(f"[Link]({wish['link']})")
@@ -185,6 +193,20 @@ def main_app():
                         st.success("Du besorgst das.")
                     else:
                         st.warning(f"Wird bereits von {wish['claimed_by']} besorgt.")
+
+        # --- Display My Expert Assignments ---
+        st.header("👨‍🏫 Meine Expertenaufträge")
+        my_expert_tasks = [w for w in st.session_state['data'] if w.get("responsible_person") == st.session_state['username']]
+
+        if not my_expert_tasks:
+            st.info("Dir wurden keine Expertenaufträge zugewiesen.")
+        
+        for task in my_expert_tasks:
+            with st.container(border=True):
+                st.subheader(f"{task['wish_name']} (für {task['owner_user']})")
+                st.write(f"**Wunsch:** {task['description']}")
+                st.write(f"Du wurdest als Experte für diesen Wunsch benannt. Bitte hilf bei der Auswahl oder besorge das Geschenk.")
+                # You could add claim/purchased buttons here as well if the expert should also be the buyer
 
 # --- App Entry Point ---
 if "authenticated" not in st.session_state:
