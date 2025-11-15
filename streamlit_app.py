@@ -11,6 +11,7 @@ import base64
 from pathlib import Path
 from typing import List, Dict, Any
 from io import BytesIO
+from PIL import Image
 
 # --- Configuration ---
 USER_CREDENTIALS = {
@@ -115,16 +116,43 @@ def main_app():
                             st.rerun()
 
                 if submit_button and wish_name and wish_desc:
-                    # Convert uploaded images to base64
+                    # Convert uploaded images to base64 with compression
                     image_data = []
                     if uploaded_images:
-                        for uploaded_file in uploaded_images:
-                            bytes_data = uploaded_file.read()
-                            base64_image = base64.b64encode(bytes_data).decode()
-                            image_data.append({
-                                "data": base64_image,
-                                "type": uploaded_file.type
-                            })
+                        try:
+                            for uploaded_file in uploaded_images:
+                                # Open and compress the image
+                                img = Image.open(uploaded_file)
+                                
+                                # Resize if too large (max 800px width)
+                                max_width = 800
+                                if img.width > max_width:
+                                    ratio = max_width / img.width
+                                    new_height = int(img.height * ratio)
+                                    img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                                
+                                # Convert to RGB if necessary
+                                if img.mode in ('RGBA', 'LA', 'P'):
+                                    background = Image.new('RGB', img.size, (255, 255, 255))
+                                    if img.mode == 'P':
+                                        img = img.convert('RGBA')
+                                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                                    img = background
+                                
+                                # Save to bytes with compression
+                                buffer = BytesIO()
+                                img.save(buffer, format='JPEG', quality=85, optimize=True)
+                                buffer.seek(0)
+                                
+                                # Convert to base64
+                                base64_image = base64.b64encode(buffer.read()).decode()
+                                image_data.append({
+                                    "data": base64_image,
+                                    "type": "image/jpeg"
+                                })
+                        except Exception as e:
+                            st.error(f"Fehler beim Hochladen der Bilder: {str(e)}")
+                            st.stop()
                     
                     if edit_mode:
                         # Update existing wish
