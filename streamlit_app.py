@@ -327,14 +327,17 @@ def main_app():
         if st.session_state['username'] in SUPER_USERS:
             st.header("👑 Admin: Ausgaben aller Benutzer")
             
-            # Determine which users to show (all except self and the other super user)
-            other_super_user = [u for u in SUPER_USERS if u != st.session_state['username']][0] if len(SUPER_USERS) > 1 else None
-            users_to_show = [u for u in ALL_USERS if u != st.session_state['username'] and u != other_super_user]
+            # Super users can see everyone's spending except purchases made FOR themselves
+            # They CAN see the other super user's spending
+            users_to_show = [u for u in ALL_USERS if u != st.session_state['username']]
             
             for user in users_to_show:
+                # Get all purchases by this user, but exclude gifts that are FOR the current super user
                 user_purchased = [
                     w for w in st.session_state['data'] 
-                    if w.get("claimed_by") == user and w.get("purchased")
+                    if w.get("claimed_by") == user 
+                    and w.get("purchased") 
+                    and w.get("owner_user") != st.session_state['username']
                 ]
                 
                 if user_purchased:
@@ -356,7 +359,7 @@ def main_app():
                         user_total = sum(item.get('actual_price', 0.0) for item in user_purchased)
                         st.markdown(f"**{user} Gesamt: {user_total:.2f}€**")
                 else:
-                    st.info(f"{user} hat noch keine Geschenke als gekauft markiert.")
+                    st.info(f"{user} hat noch keine sichtbaren Geschenke als gekauft markiert.")
 
 # --- App Entry Point ---
 if "authenticated" not in st.session_state:
