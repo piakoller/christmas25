@@ -324,6 +324,112 @@ def main_app():
                     else:
                         st.warning(f"Wird bereits von {wish['claimed_by']} besorgt.")
 
+        # --- Gift Suggestions for Others ---
+        st.header("💡 Geschenkvorschlag machen")
+        with st.expander("Einen geheimen Geschenkvorschlag für jemanden machen"):
+            with st.form("suggestion_form"):
+                st.info("💡 Dein Vorschlag wird nur für andere sichtbar sein, nicht für die Person selbst!")
+                suggestion_for = st.selectbox("Für wen?", [u for u in ALL_USERS if u != st.session_state['username']])
+                suggestion_name = st.text_input("Geschenkidee")
+                suggestion_desc = st.text_area("Beschreibung / Warum ist das eine gute Idee?")
+                suggestion_link = st.text_input("Link (optional)")
+                suggestion_price = st.number_input("Ungefährer Preis (€)", min_value=0.0, format="%.2f")
+                
+                if st.form_submit_button("💡 Vorschlag speichern"):
+                    if suggestion_name and suggestion_desc:
+                        new_suggestion = {
+                            "id": str(uuid.uuid4()),
+                            "type": "suggestion",
+                            "suggested_by": st.session_state['username'],
+                            "suggested_for": suggestion_for,
+                            "wish_name": suggestion_name,
+                            "description": suggestion_desc,
+                            "link": suggestion_link,
+                            "price": suggestion_price,
+                            "images": [],
+                            "created_at": datetime.datetime.now().isoformat(),
+                            "claimed_by": None,
+                            "claimed_at": None,
+                            "purchased": False,
+                            "actual_price": None
+                        }
+                        st.session_state.data.append(new_suggestion)
+                        save_data(st.session_state.data)
+                        st.success(f"Geheimer Vorschlag für {suggestion_for} gespeichert!")
+                        st.rerun()
+
+        # --- Display Suggestions visible to me (but NOT for me) ---
+        st.header("🎁 Geschenkvorschläge von anderen")
+        st.write("Hier siehst du Geschenkideen, die andere für deine Freunde/Familie vorgeschlagen haben.")
+        
+        # Show suggestions FOR other people (not for the current user)
+        visible_suggestions = [
+            w for w in st.session_state['data'] 
+            if w.get("type") == "suggestion" 
+            and w.get("suggested_for") != st.session_state['username']  # NOT for me
+        ]
+        
+        if not visible_suggestions:
+            st.info("Es gibt derzeit keine Geschenkvorschläge.")
+        else:
+            # Group by person
+            suggestions_by_person = {}
+            for suggestion in visible_suggestions:
+                person = suggestion['suggested_for']
+                if person not in suggestions_by_person:
+                    suggestions_by_person[person] = []
+                suggestions_by_person[person].append(suggestion)
+            
+            for person, suggestions in suggestions_by_person.items():
+                st.subheader(f"Vorschläge für {person}")
+                for suggestion in suggestions:
+                    with st.container(border=True):
+                        price_display = f"({suggestion.get('price', 0.0):.2f}€)" if suggestion.get('price') else ""
+                        st.write(f"**{suggestion['wish_name']}** {price_display}")
+                        st.write(f"*Vorgeschlagen von {suggestion['suggested_by']}*")
+                        st.write(suggestion['description'])
+                        if suggestion.get('link'):
+                            st.write(f"[Link]({suggestion['link']})")
+                        
+                        # Check if already claimed/purchased
+                        if suggestion.get("purchased"):
+                            actual_price = suggestion.get("actual_price", 0)
+                            claimed_by = suggestion.get("claimed_by", "jemand")
+                            st.success(f"✅ Wurde bereits von {claimed_by} besorgt ({actual_price:.2f}€)")
+                        elif suggestion.get("claimed_by"):
+                            if suggestion["claimed_by"] == st.session_state['username']:
+                                # I claimed it - show purchase form
+                                estimated_price = suggestion.get("price", 0.0)
+                                with st.form(key=f"purchase_suggestion_{suggestion['id']}"):
+                                    st.write(f"Geschätzter Preis: {estimated_price:.2f}€")
+                                    actual_price = st.number_input(
+                                        "Tatsächlicher Preis (€)", 
+                                        min_value=0.0, 
+                                        value=estimated_price,
+                                        format="%.2f",
+                                        key=f"sugg_price_{suggestion['id']}"
+                                    )
+                                    if st.form_submit_button("✓ Als gekauft markieren"):
+                                        for w in st.session_state['data']:
+                                            if w['id'] == suggestion['id']:
+                                                w['purchased'] = True
+                                                w['actual_price'] = actual_price
+                                                break
+                                        save_data(st.session_state['data'])
+                                        st.rerun()
+                            else:
+                                st.warning(f"Wird bereits von {suggestion['claimed_by']} besorgt.")
+                        else:
+                            # Available to claim
+                            if st.button("Ich besorge das!", key=f"claim_sugg_{suggestion['id']}"):
+                                for w in st.session_state['data']:
+                                    if w['id'] == suggestion['id']:
+                                        w['claimed_by'] = st.session_state['username']
+                                        w['claimed_at'] = datetime.datetime.now().isoformat()
+                                        break
+                                save_data(st.session_state['data'])
+                                st.rerun()
+
         # --- Display My Expert Assignments ---
         st.header("👨‍🏫 Meine Expertenaufträge")
         my_expert_tasks = [w for w in st.session_state['data'] if w.get("responsible_person") == st.session_state['username']]
