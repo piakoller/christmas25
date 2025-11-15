@@ -7,8 +7,10 @@ import streamlit as st
 import json
 import uuid
 import datetime
+import base64
 from pathlib import Path
 from typing import List, Dict, Any
+from io import BytesIO
 
 # --- Configuration ---
 USER_CREDENTIALS = {
@@ -85,6 +87,14 @@ def main_app():
                 wish_link = st.text_input("Link (optional)", value=wish_to_edit.get("link", "") if wish_to_edit else "")
                 wish_price = st.number_input("Preis (€)", min_value=0.0, value=wish_to_edit.get("price", 0.0) if wish_to_edit else 0.0, format="%.2f")
                 
+                # Image upload
+                uploaded_images = st.file_uploader(
+                    "Bilder hochladen (optional)", 
+                    accept_multiple_files=True,
+                    type=['png', 'jpg', 'jpeg'],
+                    help="Du kannst mehrere Bilder hochladen"
+                )
+                
                 buy_options = ("Andere dürfen es kaufen", "Ich kaufe es selbst")
                 buy_option_index = 1 if (wish_to_edit and wish_to_edit.get("buy_self")) else 0
                 buy_option = st.radio("Wer soll es besorgen?", buy_options, index=buy_option_index, horizontal=True)
@@ -105,6 +115,17 @@ def main_app():
                             st.rerun()
 
                 if submit_button and wish_name and wish_desc:
+                    # Convert uploaded images to base64
+                    image_data = []
+                    if uploaded_images:
+                        for uploaded_file in uploaded_images:
+                            bytes_data = uploaded_file.read()
+                            base64_image = base64.b64encode(bytes_data).decode()
+                            image_data.append({
+                                "data": base64_image,
+                                "type": uploaded_file.type
+                            })
+                    
                     if edit_mode:
                         # Update existing wish
                         for wish in st.session_state.data:
@@ -115,6 +136,9 @@ def main_app():
                                     "others_can_buy": buy_option == "Andere dürfen es kaufen",
                                     "responsible_person": responsible_person if responsible_person else None,
                                 })
+                                # Update images only if new ones were uploaded
+                                if image_data:
+                                    wish["images"] = image_data
                                 break
                         save_data(st.session_state.data)
                         st.success("Wunsch aktualisiert!")
@@ -127,7 +151,7 @@ def main_app():
                             "price": wish_price, "note": "", "color": "", 
                             "buy_self": buy_option == "Ich kaufe es selbst",
                             "others_can_buy": buy_option == "Andere dürfen es kaufen",
-                            "images": [], "responsible_person": responsible_person if responsible_person else None,
+                            "images": image_data, "responsible_person": responsible_person if responsible_person else None,
                             "claimed_by": None, "claimed_at": None, "purchased": False,
                         }
                         st.session_state.data.append(new_wish)
@@ -155,6 +179,14 @@ def main_app():
                 st.write(wish['description'])
                 if wish['link']:
                     st.write(f"[Link zum Produkt]({wish['link']})")
+                
+                # Display images
+                if wish.get('images'):
+                    cols = st.columns(min(len(wish['images']), 3))
+                    for idx, img in enumerate(wish['images']):
+                        with cols[idx % 3]:
+                            image_bytes = base64.b64decode(img['data'])
+                            st.image(image_bytes, use_container_width=True)
                 
                 # Edit and Delete buttons
                 col_edit, col_delete = st.columns(2)
@@ -229,6 +261,14 @@ def main_app():
                     st.write(wish['description'])
                     if wish['link']:
                         st.write(f"[Link]({wish['link']})")
+                    
+                    # Display images
+                    if wish.get('images'):
+                        cols = st.columns(min(len(wish['images']), 3))
+                        for idx, img in enumerate(wish['images']):
+                            with cols[idx % 3]:
+                                image_bytes = base64.b64decode(img['data'])
+                                st.image(image_bytes, use_container_width=True)
 
                     if wish["claimed_by"] is None:
                         if st.button("Ich besorge das!", key=f"claim_{wish['id']}"):
@@ -257,6 +297,14 @@ def main_app():
                 st.write(f"**Beschreibung:** {task['description']}")
                 if task['link']:
                     st.write(f"[Link zum Produkt]({task['link']})")
+                
+                # Display images
+                if task.get('images'):
+                    cols = st.columns(min(len(task['images']), 3))
+                    for idx, img in enumerate(task['images']):
+                        with cols[idx % 3]:
+                            image_bytes = base64.b64decode(img['data'])
+                            st.image(image_bytes, use_container_width=True)
                 
                 # Check if already purchased by expert
                 if task.get("claimed_by") == st.session_state['username'] and task.get("purchased"):
