@@ -284,9 +284,9 @@ def main_app():
             status = ""
             if wish.get("purchased") and wish.get("buy_self"):
                 status = f"✅ Schon besorgt ({wish.get('actual_price', 0):.2f}€)"
-            elif wish["claimed_by"]:
+            elif wish.get("claimed_by"):
                 status = "🎁 Wird besorgt!"
-            elif wish["buy_self"]:
+            elif wish.get("buy_self"):
                 status = "🛍️ Kaufe ich selbst"
 
             with st.container(border=True):
