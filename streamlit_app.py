@@ -9,9 +9,17 @@ import uuid
 import datetime
 import base64
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from io import BytesIO
 from PIL import Image
+
+# Firebase imports (optional, only used if configured)
+try:
+    import firebase_admin
+    from firebase_admin import credentials, db
+    FIREBASE_AVAILABLE = True
+except ImportError:
+    FIREBASE_AVAILABLE = False
 
 # --- Configuration ---
 USER_CREDENTIALS = {
@@ -22,9 +30,59 @@ ALL_USERS = list(USER_CREDENTIALS.keys())
 SUPER_USERS = ["Dieter", "Gudrun"]
 DATA_FILE = Path("wunschliste.json")
 
-# --- Data Persistence ---
+# --- Data Persistence (Firebase Realtime Database preferred, fallback to local JSON) ---
+
+def _init_firebase_from_secrets() -> Optional[Any]:
+    """Initialize Firebase Realtime Database using service account provided in Streamlit secrets.
+    Returns a database reference or None on failure.
+    The service account JSON should be stored in Streamlit secrets as `firebase` (a dict).
+    """
+    if not FIREBASE_AVAILABLE:
+        return None
+    
+    try:
+        if not st.secrets.get("firebase"):
+            return None
+        if 'firebase_db' in st.session_state:
+            return st.session_state['firebase_db']
+        
+        cred = credentials.Certificate(dict(st.secrets["firebase"]))
+        # Avoid re-initializing the app
+        try:
+            firebase_admin.get_app()
+        except Exception:
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': f'https://{st.secrets["firebase"]["project_id"]}-default-rtdb.firebaseio.com'
+            })
+        database = db.reference('/')
+        st.session_state['firebase_db'] = database
+        return database
+    except Exception as e:
+        # Show error for debugging but don't crash
+        st.sidebar.warning(f"Firebase connection failed: {str(e)}")
+        return None
+
+
 def load_data() -> List[Dict[str, Any]]:
-    """Loads the wish list data from the JSON file."""
+    """Load wishlist data. Prefer Firebase Realtime Database when configured, otherwise use local JSON file."""
+    # Try Firebase Realtime Database
+    db_ref = _init_firebase_from_secrets()
+    if db_ref:
+        try:
+            wishes_ref = db_ref.child('wishes')
+            data = wishes_ref.get()
+            if data:
+                # Firebase returns a dict, convert to list
+                if isinstance(data, dict):
+                    return list(data.values())
+                return data if isinstance(data, list) else []
+            return []
+        except Exception as e:
+            # fall back to local file
+            st.sidebar.warning(f"Firebase read failed: {str(e)}")
+            pass
+
+    # Fallback: local JSON file
     if not DATA_FILE.exists():
         return []
     try:
@@ -34,8 +92,28 @@ def load_data() -> List[Dict[str, Any]]:
     except (json.JSONDecodeError, FileNotFoundError):
         return []
 
+
 def save_data(data: List[Dict[str, Any]]):
-    """Saves the wish list data to the JSON file."""
+    """Save wishlist data to Firebase Realtime Database when configured, otherwise to local JSON."""
+    # Try Firebase Realtime Database
+    db_ref = _init_firebase_from_secrets()
+    if db_ref:
+        try:
+            wishes_ref = db_ref.child('wishes')
+            # Convert list to dict with IDs as keys for better Firebase structure
+            data_dict = {}
+            for item in data:
+                item_id = item.get('id', str(uuid.uuid4()))
+                data_dict[item_id] = item
+            # Set the entire wishes node
+            wishes_ref.set(data_dict)
+            return
+        except Exception as e:
+            # fall back to local file
+            st.sidebar.warning(f"Firebase write failed: {str(e)}")
+            pass
+
+    # Fallback: write to local JSON file
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
@@ -115,7 +193,15 @@ def main_app():
                             st.session_state.edit_wish_id = None
                             st.rerun()
 
-                if submit_button and wish_name and wish_desc:
+                if submit_button:
+                    # Validate inputs
+                    if not wish_name:
+                        st.error("❌ Bitte gib einen Namen für deinen Wunsch ein!")
+                        st.stop()
+                    if not wish_desc:
+                        st.error("❌ Bitte füge eine Beschreibung hinzu!")
+                        st.stop()
+                    
                     # Convert uploaded images to base64 with compression
                     image_data = []
                     if uploaded_images:
@@ -196,7 +282,9 @@ def main_app():
         
         for wish in my_wishes:
             status = ""
-            if wish["claimed_by"]:
+            if wish.get("purchased") and wish.get("buy_self"):
+                status = f"✅ Schon besorgt ({wish.get('actual_price', 0):.2f}€)"
+            elif wish["claimed_by"]:
                 status = "🎁 Wird besorgt!"
             elif wish["buy_self"]:
                 status = "🛍️ Kaufe ich selbst"
@@ -221,6 +309,28 @@ def main_app():
                                     st.image(image_bytes, use_container_width=True)
                     except Exception as e:
                         pass  # Silently skip if image decoding fails
+                
+                # If buy_self and not purchased yet, show purchase form
+                if wish.get("buy_self") and not wish.get("purchased"):
+                    with st.form(key=f"self_purchase_{wish['id']}"):
+                        estimated_price = wish.get("price", 0.0)
+                        st.write(f"💰 Geschätzter Preis: {estimated_price:.2f}€")
+                        actual_price = st.number_input(
+                            "Tatsächlicher Preis (€)", 
+                            min_value=0.0, 
+                            value=estimated_price,
+                            format="%.2f",
+                            key=f"self_price_{wish['id']}"
+                        )
+                        if st.form_submit_button("✓ Als gekauft markieren"):
+                            for w in st.session_state['data']:
+                                if w['id'] == wish['id']:
+                                    w['purchased'] = True
+                                    w['actual_price'] = actual_price
+                                    w['claimed_by'] = st.session_state['username']
+                                    break
+                            save_data(st.session_state['data'])
+                            st.rerun()
                 
                 # Edit and Delete buttons
                 col_edit, col_delete = st.columns(2)
@@ -263,6 +373,8 @@ def main_app():
                                 if w['id'] == item['id']:
                                     w['purchased'] = True
                                     w['actual_price'] = actual_price
+                                    if 'reimbursed' not in w:
+                                        w['reimbursed'] = False
                                     break
                             save_data(st.session_state['data'])
                             st.rerun()
@@ -510,18 +622,41 @@ def main_app():
             
             table_data = []
             for item in purchased_items:
+                reimbursed_status = "✅ Ja" if item.get('reimbursed', False) else "❌ Nein"
                 table_data.append({
                     "Geschenk": item['wish_name'],
                     "Für": item['owner_user'],
                     "Geschätzter Preis": f"{item.get('price', 0.0):.2f}€",
-                    "Tatsächlicher Preis": f"{item.get('actual_price', 0.0):.2f}€"
+                    "Tatsächlicher Preis": f"{item.get('actual_price', 0.0):.2f}€",
+                    "Erstattet": reimbursed_status
                 })
             
             df = pd.DataFrame(table_data)
             st.dataframe(df, use_container_width=True, hide_index=True)
             
             total_spent = sum(item.get('actual_price', 0.0) for item in purchased_items)
+            total_reimbursed = sum(item.get('actual_price', 0.0) for item in purchased_items if item.get('reimbursed', False))
+            total_outstanding = total_spent - total_reimbursed
+            
             st.markdown(f"### **Gesamtausgaben: {total_spent:.2f}€**")
+            st.markdown(f"**Erstattet: {total_reimbursed:.2f}€**")
+            st.markdown(f"**Noch offen: {total_outstanding:.2f}€**")
+            
+            # Allow marking items as reimbursed
+            st.subheader("Erstattung markieren")
+            for item in purchased_items:
+                if not item.get('reimbursed', False):
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.write(f"{item['wish_name']} ({item.get('actual_price', 0.0):.2f}€)")
+                    with col2:
+                        if st.button("✓ Erstattet", key=f"reimburse_{item['id']}"):
+                            for w in st.session_state['data']:
+                                if w['id'] == item['id']:
+                                    w['reimbursed'] = True
+                                    break
+                            save_data(st.session_state['data'])
+                            st.rerun()
 
         # --- Super User View: See Others' Spending ---
         if st.session_state['username'] in SUPER_USERS:
@@ -546,18 +681,25 @@ def main_app():
                         
                         table_data = []
                         for item in user_purchased:
+                            reimbursed_status = "✅ Ja" if item.get('reimbursed', False) else "❌ Nein"
                             table_data.append({
                                 "Geschenk": item['wish_name'],
                                 "Für": item['owner_user'],
                                 "Geschätzter Preis": f"{item.get('price', 0.0):.2f}€",
-                                "Tatsächlicher Preis": f"{item.get('actual_price', 0.0):.2f}€"
+                                "Tatsächlicher Preis": f"{item.get('actual_price', 0.0):.2f}€",
+                                "Erstattet": reimbursed_status
                             })
                         
                         df = pd.DataFrame(table_data)
                         st.dataframe(df, use_container_width=True, hide_index=True)
                         
                         user_total = sum(item.get('actual_price', 0.0) for item in user_purchased)
+                        user_reimbursed = sum(item.get('actual_price', 0.0) for item in user_purchased if item.get('reimbursed', False))
+                        user_outstanding = user_total - user_reimbursed
+                        
                         st.markdown(f"**{user} Gesamt: {user_total:.2f}€**")
+                        st.markdown(f"**Erstattet: {user_reimbursed:.2f}€**")
+                        st.markdown(f"**Noch offen: {user_outstanding:.2f}€**")
                 else:
                     st.info(f"{user} hat noch keine sichtbaren Geschenke als gekauft markiert.")
 

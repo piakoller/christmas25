@@ -1,2 +1,5 @@
 streamlit
 pillow
+streamlit-gsheets-connection
+pandas
+firebase-admin

@@ -1,6 +1,15 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,streamlit
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,streamlit
 
+# Streamlit secrets (NEVER commit these!)
+.streamlit/secrets.toml
+
+# Firebase service account credentials
+*firebase-adminsdk*.json
+
+# Backup files
+wunschliste_backup.json
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
