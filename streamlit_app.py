@@ -141,6 +141,20 @@ def main_app():
     st.set_page_config(page_title="Weihnachts-Wunschliste", layout="wide")
     st.title(f"🎄 Willkommen, {st.session_state['username']}! 🎄")
 
+    # Christmas Countdown (to Heiligabend - December 24th)
+    today = datetime.date.today()
+    christmas = datetime.date(today.year, 12, 24)
+    if today > christmas:
+        christmas = datetime.date(today.year + 1, 12, 24)
+    days_until_christmas = (christmas - today).days
+    
+    st.markdown(f"""
+    <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; margin-bottom: 30px;'>
+        <h1 style='color: white; font-size: 3em; margin: 0;'>🎅 {days_until_christmas} 🎄</h1>
+        <h2 style='color: white; margin: 10px 0 0 0;'>{'Tage bis Heiligabend!' if days_until_christmas != 1 else 'Tag bis Heiligabend!'}</h2>
+    </div>
+    """, unsafe_allow_html=True)
+
     # Load data into session state if not already present
     if 'data' not in st.session_state:
         st.session_state['data'] = load_data()
