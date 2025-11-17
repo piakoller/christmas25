@@ -436,7 +436,7 @@ def main_app():
                         except Exception as e:
                             pass  # Silently skip if image decoding fails
 
-                    if wish["claimed_by"] is None:
+                    if wish.get("claimed_by") is None:
                         if st.button("Ich besorge das!", key=f"claim_{wish['id']}"):
                             for w in st.session_state['data']:
                                 if w['id'] == wish['id']:
@@ -445,10 +445,10 @@ def main_app():
                                     break
                             save_data(st.session_state['data'])
                             st.rerun()
-                    elif wish["claimed_by"] == st.session_state['username']:
+                    elif wish.get("claimed_by") == st.session_state['username']:
                         st.success("Du besorgst das.")
                     else:
-                        st.warning(f"Wird bereits von {wish['claimed_by']} besorgt.")
+                        st.warning(f"Wird bereits von {wish.get('claimed_by')} besorgt.")
 
         # --- Gift Suggestions for Others ---
         st.header("💡 Geschenkvorschlag machen")
