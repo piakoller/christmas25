@@ -29,6 +29,7 @@ USER_CREDENTIALS = {
 ALL_USERS = list(USER_CREDENTIALS.keys())
 SUPER_USERS = ["Dieter", "Gudrun"]
 DATA_FILE = Path("wunschliste.json")
+BUDGET_LIMIT = 1500.0  # Budget limit per user in euros
 
 # --- Data Persistence (Firebase Realtime Database preferred, fallback to local JSON) ---
 
@@ -216,6 +217,16 @@ def main_app():
                         st.error("❌ Bitte füge eine Beschreibung hinzu!")
                         st.stop()
                     
+                    # Check budget limit when adding new wish (not when editing)
+                    if not edit_mode:
+                        current_wishes = [w for w in st.session_state['data'] if w["owner_user"] == st.session_state['username']]
+                        current_total = sum(w.get("actual_price", 0.0) if w.get("purchased") else w.get("price", 0.0) for w in current_wishes)
+                        
+                        if current_total + wish_price > BUDGET_LIMIT:
+                            remaining = BUDGET_LIMIT - current_total
+                            st.error(f"⚠️ Dieser Wunsch würde dein Budget von {BUDGET_LIMIT:.2f}€ überschreiten! Du hast noch {remaining:.2f}€ verfügbar.")
+                            st.stop()
+                    
                     # Convert uploaded images to base64 with compression
                     image_data = []
                     if uploaded_images:
@@ -290,7 +301,55 @@ def main_app():
 
         # --- Display My Wishes ---
         st.header("Meine Wunschliste")
+        
+        # Calculate budget usage
         my_wishes = [w for w in st.session_state['data'] if w["owner_user"] == st.session_state['username']]
+        
+        # Calculate total value of wishes (use actual_price if purchased, otherwise estimated price)
+        total_wished = 0.0
+        for wish in my_wishes:
+            if wish.get("purchased"):
+                total_wished += wish.get("actual_price", 0.0)
+            else:
+                total_wished += wish.get("price", 0.0)
+        
+        budget_remaining = BUDGET_LIMIT - total_wished
+        budget_percentage = (total_wished / BUDGET_LIMIT) * 100 if BUDGET_LIMIT > 0 else 0
+        
+        # Display budget indicator
+        if budget_percentage > 100:
+            budget_color = "#ff4444"
+            budget_emoji = "⚠️"
+        elif budget_percentage > 80:
+            budget_color = "#ff9800"
+            budget_emoji = "⚡"
+        else:
+            budget_color = "#4caf50"
+            budget_emoji = "✅"
+        
+        st.markdown(f"""
+        <div style='background: linear-gradient(135deg, {budget_color}22 0%, {budget_color}44 100%); 
+                    border-left: 4px solid {budget_color}; 
+                    padding: 15px; 
+                    border-radius: 8px; 
+                    margin-bottom: 20px;'>
+            <div style='display: flex; justify-content: space-between; align-items: center;'>
+                <div>
+                    <h3 style='margin: 0; color: #333;'>{budget_emoji} Dein Budget</h3>
+                    <p style='margin: 5px 0 0 0; color: #666;'>Wünsche im Wert von {total_wished:.2f}€ / {BUDGET_LIMIT:.2f}€</p>
+                </div>
+                <div style='text-align: right;'>
+                    <h2 style='margin: 0; color: {budget_color};'>{budget_remaining:.2f}€</h2>
+                    <p style='margin: 5px 0 0 0; color: #666;'>noch verfügbar</p>
+                </div>
+            </div>
+            <div style='background: #ddd; height: 20px; border-radius: 10px; margin-top: 10px; overflow: hidden;'>
+                <div style='background: {budget_color}; height: 100%; width: {min(budget_percentage, 100):.1f}%; 
+                            transition: width 0.3s ease;'></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
         if not my_wishes:
             st.info("Du hast noch keine Wünsche hinzugefügt.")
         
