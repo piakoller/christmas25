@@ -426,7 +426,7 @@ def main_app():
 
         for item in my_claimed:
             with st.container(border=True):
-                st.subheader(f"{item['wish_name']} (für {item['owner_user']})")
+                st.subheader(f"{item.get('wish_name', 'Unbekannt')} (für {item.get('owner_user', 'Unbekannt')})")
                 if item.get("purchased"):
                     actual_price = item.get("actual_price", 0)
                     st.success(f"✅ Schon besorgt ({actual_price:.2f}€)")
@@ -570,11 +570,11 @@ def main_app():
                 for suggestion in suggestions:
                     with st.container(border=True):
                         price_display = f"({suggestion.get('price', 0.0):.2f}€)" if suggestion.get('price') else ""
-                        st.write(f"**{suggestion['wish_name']}** {price_display}")
-                        st.write(f"*Vorgeschlagen von {suggestion['suggested_by']}*")
-                        st.write(suggestion['description'])
+                        st.write(f"**{suggestion.get('wish_name', 'Unbekannt')}** {price_display}")
+                        st.write(f"*Vorgeschlagen von {suggestion.get('suggested_by', 'Unbekannt')}*")
+                        st.write(suggestion.get('description', ''))
                         if suggestion.get('link'):
-                            st.write(f"[Link]({suggestion['link']})")
+                            st.write(f"[Link]({suggestion.get('link')})")
                         
                         # Check if already claimed/purchased
                         if suggestion.get("purchased"):
@@ -624,10 +624,10 @@ def main_app():
         
         for task in my_expert_tasks:
             with st.container(border=True):
-                st.subheader(f"{task['wish_name']} (für {task['owner_user']})")
-                st.write(f"**Beschreibung:** {task['description']}")
-                if task['link']:
-                    st.write(f"[Link zum Produkt]({task['link']})")
+                st.subheader(f"{task.get('wish_name', 'Unbekannt')} (für {task.get('owner_user', 'Unbekannt')})")
+                st.write(f"**Beschreibung:** {task.get('description', '')}")
+                if task.get('link'):
+                    st.write(f"[Link zum Produkt]({task.get('link')})")
                 
                 # Display images
                 if task.get('images') and isinstance(task['images'], list) and len(task['images']) > 0:
@@ -697,8 +697,8 @@ def main_app():
             for item in purchased_items:
                 reimbursed_status = "✅ Ja" if item.get('reimbursed', False) else "❌ Nein"
                 table_data.append({
-                    "Geschenk": item['wish_name'],
-                    "Für": item['owner_user'],
+                    "Geschenk": item.get('wish_name', 'Unbekannt'),
+                    "Für": item.get('owner_user', 'Unbekannt'),
                     "Geschätzter Preis": f"{item.get('price', 0.0):.2f}€",
                     "Tatsächlicher Preis": f"{item.get('actual_price', 0.0):.2f}€",
                     "Erstattet": reimbursed_status
@@ -721,7 +721,7 @@ def main_app():
                 if not item.get('reimbursed', False):
                     col1, col2 = st.columns([3, 1])
                     with col1:
-                        st.write(f"{item['wish_name']} ({item.get('actual_price', 0.0):.2f}€)")
+                        st.write(f"{item.get('wish_name', 'Unbekannt')} ({item.get('actual_price', 0.0):.2f}€)")
                     with col2:
                         if st.button("✓ Erstattet", key=f"reimburse_{item['id']}"):
                             for w in st.session_state['data']:
@@ -756,8 +756,8 @@ def main_app():
                         for item in user_purchased:
                             reimbursed_status = "✅ Ja" if item.get('reimbursed', False) else "❌ Nein"
                             table_data.append({
-                                "Geschenk": item['wish_name'],
-                                "Für": item['owner_user'],
+                                "Geschenk": item.get('wish_name', 'Unbekannt'),
+                                "Für": item.get('owner_user', 'Unbekannt'),
                                 "Geschätzter Preis": f"{item.get('price', 0.0):.2f}€",
                                 "Tatsächlicher Preis": f"{item.get('actual_price', 0.0):.2f}€",
                                 "Erstattet": reimbursed_status
