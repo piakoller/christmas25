@@ -172,32 +172,52 @@ def main_app():
             
             edit_mode = st.session_state.edit_wish_id is not None
             wish_to_edit = next((w for w in st.session_state.data if w['id'] == st.session_state.edit_wish_id), None) if edit_mode else None
+            is_suggestion = wish_to_edit and wish_to_edit.get('type') == 'suggestion' if wish_to_edit else False
 
             with st.form("wish_form"):
-                st.subheader("Neuen Wunsch hinzufügen" if not edit_mode else "Wunsch bearbeiten")
+                if is_suggestion:
+                    st.subheader("Geschenkvorschlag bearbeiten")
+                else:
+                    st.subheader("Neuen Wunsch hinzufügen" if not edit_mode else "Wunsch bearbeiten")
                 
-                wish_name = st.text_input("Was wünschst du dir?", value=wish_to_edit.get("wish_name", "") if wish_to_edit else "")
-                wish_desc = st.text_area("Beschreibung", value=wish_to_edit.get("description", "") if wish_to_edit else "")
-                wish_link = st.text_input("Link (optional)", value=wish_to_edit.get("link", "") if wish_to_edit else "")
-                wish_price = st.number_input("Preis (€)", min_value=0.0, value=wish_to_edit.get("price", 0.0) if wish_to_edit else 0.0, format="%.2f")
-                
-                # Image upload
-                uploaded_images = st.file_uploader(
-                    "Bilder hochladen (optional)", 
-                    accept_multiple_files=True,
-                    type=['png', 'jpg', 'jpeg'],
-                    help="Du kannst mehrere Bilder hochladen"
-                )
-                
-                buy_options = ("Andere dürfen es kaufen", "Ich kaufe es selbst")
-                buy_option_index = 1 if (wish_to_edit and wish_to_edit.get("buy_self")) else 0
-                buy_option = st.radio("Wer soll es besorgen?", buy_options, index=buy_option_index, horizontal=True)
-                
-                other_users = [user for user in ALL_USERS if user != st.session_state['username']]
-                expert_options = [""] + other_users
-                responsible = wish_to_edit.get("responsible_person") if wish_to_edit else None
-                expert_index = expert_options.index(responsible) if responsible and responsible in expert_options else 0
-                responsible_person = st.selectbox("Experte (optional)", expert_options, index=expert_index)
+                if is_suggestion:
+                    # Editing a suggestion - show suggestion fields
+                    wish_name = st.text_input("Geschenkidee", value=wish_to_edit.get("wish_name", ""))
+                    wish_desc = st.text_area("Beschreibung / Warum ist das eine gute Idee?", value=wish_to_edit.get("description", ""))
+                    wish_link = st.text_input("Link (optional)", value=wish_to_edit.get("link", ""))
+                    wish_price = st.number_input("Ungefährer Preis (€)", min_value=0.0, value=wish_to_edit.get("price", 0.0), format="%.2f")
+                    
+                    # Show who the suggestion is for
+                    st.info(f"Vorschlag für: {wish_to_edit.get('suggested_for', 'Unbekannt')}")
+                    
+                    # No image upload or buy options for suggestions
+                    uploaded_images = None
+                    buy_option = None
+                    responsible_person = None
+                else:
+                    # Regular wish form
+                    wish_name = st.text_input("Was wünschst du dir?", value=wish_to_edit.get("wish_name", "") if wish_to_edit else "")
+                    wish_desc = st.text_area("Beschreibung", value=wish_to_edit.get("description", "") if wish_to_edit else "")
+                    wish_link = st.text_input("Link (optional)", value=wish_to_edit.get("link", "") if wish_to_edit else "")
+                    wish_price = st.number_input("Preis (€)", min_value=0.0, value=wish_to_edit.get("price", 0.0) if wish_to_edit else 0.0, format="%.2f")
+                    
+                    # Image upload
+                    uploaded_images = st.file_uploader(
+                        "Bilder hochladen (optional)", 
+                        accept_multiple_files=True,
+                        type=['png', 'jpg', 'jpeg'],
+                        help="Du kannst mehrere Bilder hochladen"
+                    )
+                    
+                    buy_options = ("Andere dürfen es kaufen", "Ich kaufe es selbst")
+                    buy_option_index = 1 if (wish_to_edit and wish_to_edit.get("buy_self")) else 0
+                    buy_option = st.radio("Wer soll es besorgen?", buy_options, index=buy_option_index, horizontal=True)
+                    
+                    other_users = [user for user in ALL_USERS if user != st.session_state['username']]
+                    expert_options = [""] + other_users
+                    responsible = wish_to_edit.get("responsible_person") if wish_to_edit else None
+                    expert_index = expert_options.index(responsible) if responsible and responsible in expert_options else 0
+                    responsible_person = st.selectbox("Experte (optional)", expert_options, index=expert_index)
 
                 col_submit, col_cancel = st.columns(2)
                 with col_submit:
@@ -266,18 +286,32 @@ def main_app():
                             st.stop()
                     
                     if edit_mode:
-                        # Update existing wish
+                        # Update existing wish or suggestion
                         for wish in st.session_state.data:
                             if wish['id'] == st.session_state.edit_wish_id:
-                                wish.update({
-                                    "wish_name": wish_name, "description": wish_desc, "link": wish_link,
-                                    "price": wish_price, "buy_self": buy_option == "Ich kaufe es selbst",
-                                    "others_can_buy": buy_option == "Andere dürfen es kaufen",
-                                    "responsible_person": responsible_person if responsible_person else None,
-                                })
-                                # Update images only if new ones were uploaded
-                                if image_data:
-                                    wish["images"] = image_data
+                                if is_suggestion:
+                                    # Update suggestion - keep suggestion-specific fields
+                                    wish.update({
+                                        "wish_name": wish_name, 
+                                        "description": wish_desc, 
+                                        "link": wish_link,
+                                        "price": wish_price,
+                                        # Keep original suggestion fields
+                                        "type": "suggestion",
+                                        "suggested_by": wish.get("suggested_by"),
+                                        "suggested_for": wish.get("suggested_for")
+                                    })
+                                else:
+                                    # Update regular wish
+                                    wish.update({
+                                        "wish_name": wish_name, "description": wish_desc, "link": wish_link,
+                                        "price": wish_price, "buy_self": buy_option == "Ich kaufe es selbst",
+                                        "others_can_buy": buy_option == "Andere dürfen es kaufen",
+                                        "responsible_person": responsible_person if responsible_person else None,
+                                    })
+                                    # Update images only if new ones were uploaded
+                                    if image_data:
+                                        wish["images"] = image_data
                                 break
                         save_data(st.session_state.data)
                         st.success("Wunsch aktualisiert!")
@@ -426,7 +460,9 @@ def main_app():
 
         for item in my_claimed:
             with st.container(border=True):
-                st.subheader(f"{item.get('wish_name', 'Unbekannt')} (für {item.get('owner_user', 'Unbekannt')})")
+                # For suggestions, use suggested_for instead of owner_user
+                recipient = item.get('suggested_for') if item.get('type') == 'suggestion' else item.get('owner_user')
+                st.subheader(f"{item.get('wish_name', 'Unbekannt')} (für {recipient or 'Unbekannt'})")
                 if item.get("purchased"):
                     actual_price = item.get("actual_price", 0)
                     st.success(f"✅ Schon besorgt ({actual_price:.2f}€)")
@@ -614,6 +650,19 @@ def main_app():
                                         break
                                 save_data(st.session_state['data'])
                                 st.rerun()
+                        
+                        # Edit and Delete buttons for the person who made the suggestion
+                        if suggestion.get('suggested_by') == st.session_state['username']:
+                            col_edit_sugg, col_delete_sugg = st.columns(2)
+                            with col_edit_sugg:
+                                if st.button(f"✏️ Bearbeiten", key=f"edit_sugg_{suggestion['id']}"):
+                                    st.session_state.edit_wish_id = suggestion['id']
+                                    st.rerun()
+                            with col_delete_sugg:
+                                if st.button(f"🗑️ Löschen", key=f"del_sugg_{suggestion['id']}"):
+                                    st.session_state['data'] = [w for w in st.session_state['data'] if w['id'] != suggestion['id']]
+                                    save_data(st.session_state['data'])
+                                    st.rerun()
 
         # --- Display My Expert Assignments ---
         st.header("👨‍🏫 Meine Expertenaufträge")
