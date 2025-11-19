@@ -219,7 +219,7 @@ def main_app():
                     
                     # Check budget limit when adding new wish (not when editing)
                     if not edit_mode:
-                        current_wishes = [w for w in st.session_state['data'] if w["owner_user"] == st.session_state['username']]
+                        current_wishes = [w for w in st.session_state['data'] if w.get("owner_user") == st.session_state['username']]
                         current_total = sum(w.get("actual_price", 0.0) if w.get("purchased") else w.get("price", 0.0) for w in current_wishes)
                         
                         if current_total + wish_price > BUDGET_LIMIT:
@@ -303,7 +303,7 @@ def main_app():
         st.header("Meine Wunschliste")
         
         # Calculate budget usage
-        my_wishes = [w for w in st.session_state['data'] if w["owner_user"] == st.session_state['username']]
+        my_wishes = [w for w in st.session_state['data'] if w.get("owner_user") == st.session_state['username']]
         
         # Calculate total value of wishes (use actual_price if purchased, otherwise estimated price)
         total_wished = 0.0
@@ -370,10 +370,10 @@ def main_app():
                     st.write(f"[Link zum Produkt]({wish['link']})")
                 
                 # Display images
-                if wish.get('images') and isinstance(wish['images'], list) and len(wish['images']) > 0:
+                if wish.get('images') and isinstance(wish.get('images'), list) and len(wish.get('images', [])) > 0:
                     try:
                         # Filter out non-dict items (old format compatibility)
-                        valid_images = [img for img in wish['images'] if isinstance(img, dict) and 'data' in img]
+                        valid_images = [img for img in wish.get('images', []) if isinstance(img, dict) and 'data' in img]
                         if valid_images:
                             cols = st.columns(min(len(valid_images), 3))
                             for idx, img in enumerate(valid_images):
@@ -457,7 +457,7 @@ def main_app():
         st.header("🎁 Wunschlisten der Anderen")
         other_wishes = [
             w for w in st.session_state['data'] 
-            if w["owner_user"] != st.session_state['username'] and w["others_can_buy"]
+            if w.get("owner_user") != st.session_state['username'] and w.get("others_can_buy")
         ]
 
         if not other_wishes:
