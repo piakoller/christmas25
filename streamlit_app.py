@@ -745,9 +745,11 @@ def main_app():
             table_data = []
             for item in purchased_items:
                 reimbursed_status = "✅ Ja" if item.get('reimbursed', False) else "❌ Nein"
+                # For suggestions, use suggested_for instead of owner_user
+                recipient = item.get('suggested_for') if item.get('type') == 'suggestion' else item.get('owner_user')
                 table_data.append({
                     "Geschenk": item.get('wish_name', 'Unbekannt'),
-                    "Für": item.get('owner_user', 'Unbekannt'),
+                    "Für": recipient or 'Unbekannt',
                     "Geschätzter Preis": f"{item.get('price', 0.0):.2f}€",
                     "Tatsächlicher Preis": f"{item.get('actual_price', 0.0):.2f}€",
                     "Erstattet": reimbursed_status
