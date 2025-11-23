@@ -118,6 +118,46 @@ def save_data(data: List[Dict[str, Any]]):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
+
+def load_planning_data() -> Dict[str, Any]:
+    """Load planning data (meals, attendance) from Firebase or local file."""
+    db_ref = _init_firebase_from_secrets()
+    if db_ref:
+        try:
+            planning_ref = db_ref.child('planning')
+            data = planning_ref.get()
+            if data:
+                return data
+            return {"meals": {}, "attendance": {}}
+        except Exception as e:
+            st.sidebar.warning(f"Firebase planning read failed: {str(e)}")
+    
+    # Fallback: local JSON
+    planning_file = Path("planning.json")
+    if planning_file.exists():
+        try:
+            with open(planning_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+    return {"meals": {}, "attendance": {}}
+
+
+def save_planning_data(data: Dict[str, Any]):
+    """Save planning data to Firebase or local file."""
+    db_ref = _init_firebase_from_secrets()
+    if db_ref:
+        try:
+            planning_ref = db_ref.child('planning')
+            planning_ref.set(data)
+            return
+        except Exception as e:
+            st.sidebar.warning(f"Firebase planning write failed: {str(e)}")
+    
+    # Fallback: local JSON
+    with open("planning.json", "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
 # --- Main App Logic ---
 def login_page():
     """Displays the login page and handles authentication."""
@@ -140,9 +180,165 @@ def login_page():
 def main_app():
     """The main application interface after successful login."""
     st.set_page_config(page_title="Weihnachts-Wunschliste", layout="wide")
-    st.title(f"🎄 Willkommen, {st.session_state['username']}! 🎄")
+    
+    # Load data into session state if not already present
+    if 'data' not in st.session_state:
+        st.session_state['data'] = load_data()
+    if 'edit_wish_id' not in st.session_state:
+        st.session_state['edit_wish_id'] = None
+    if 'planning_data' not in st.session_state:
+        st.session_state['planning_data'] = load_planning_data()
+    if 'current_page' not in st.session_state:
+        st.session_state['current_page'] = 'dashboard'
+    
+    # Route to appropriate page
+    if st.session_state['current_page'] == 'dashboard':
+        dashboard_page()
+    elif st.session_state['current_page'] == 'countdown':
+        countdown_page()
+    elif st.session_state['current_page'] == 'wishlist':
+        wishlist_page()
+    elif st.session_state['current_page'] == 'meals':
+        meal_planning_page()
+    elif st.session_state['current_page'] == 'attendance':
+        attendance_page()
+    elif st.session_state['current_page'] == 'advent':
+        advent_calendar_page()
 
-    # Christmas Countdown (to Heiligabend - December 24th)
+
+def dashboard_page():
+    """Display the main dashboard with tile navigation."""
+    
+    # Custom CSS for beautiful cards
+    st.markdown("""
+    <style>
+    /* Page background with subtle pattern */
+    .main .block-container {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8f5e9 100%) !important;
+        padding: 2rem !important;
+    }
+    
+    /* Card styling */
+    .tile-card {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin: 10px 0;
+        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    
+    .tile-card h2 {
+        font-size: 3em;
+        margin: 10px 0;
+    }
+    
+    .tile-card p {
+        font-size: 1.2em;
+        color: #666;
+        margin: 10px 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Styled welcome header
+    st.markdown(f"""
+        <h1 style='text-align: center; 
+                   color: #2E7D32; 
+                   font-size: 3em;
+                   text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+                   margin-bottom: 30px;'>
+            🎄 Willkommen, {st.session_state['username']}! 🎄
+        </h1>
+    """, unsafe_allow_html=True)
+    
+    # Calculate Christmas countdown
+    today = datetime.date.today()
+    christmas = datetime.date(today.year, 12, 24)
+    if today > christmas:
+        christmas = datetime.date(today.year + 1, 12, 24)
+    days_until_christmas = (christmas - today).days
+    
+    # First row: Christmas Countdown (large centered card)
+    col_spacer1, col_countdown, col_spacer2 = st.columns([1, 2, 1])
+    with col_countdown:
+        st.markdown(f"""
+        <div class="tile-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; min-height: 300px;">
+            <h2 style="font-size: 4em; color: white;">🎅</h2>
+            <h1 style="font-size: 5em; margin: 20px 0; color: white;">{days_until_christmas}</h1>
+            <p style="font-size: 1.5em; color: white;">{'Tage bis Heiligabend!' if days_until_christmas != 1 else 'Tag bis Heiligabend!'}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🎄 Zum Countdown", key="countdown_btn", use_container_width=True):
+            st.session_state['current_page'] = 'countdown'
+            st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Second row: 4 tiles
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # Tile 1: Wunschliste
+    with col1:
+        st.markdown("""
+        <div class="tile-card" style="background: linear-gradient(135deg, #D22B2B 0%, #FF6B9D 100%); color: white;">
+            <h2 style="color: white;">🎁</h2>
+            <p style="font-size: 1.3em; font-weight: bold; color: white;">Wunschliste</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("📝 Zur Wunschliste", key="wishlist_btn", use_container_width=True):
+            st.session_state['current_page'] = 'wishlist'
+            st.rerun()
+    
+    # Tile 2: Essensplanung
+    with col2:
+        st.markdown("""
+        <div class="tile-card" style="background: linear-gradient(135deg, #2E7D32 0%, #66BB6A 100%); color: white;">
+            <h2 style="color: white;">🍽️</h2>
+            <p style="font-size: 1.3em; font-weight: bold; color: white;">Essensplanung</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🍴 Zur Essensplanung", key="meals_btn", use_container_width=True):
+            st.session_state['current_page'] = 'meals'
+            st.rerun()
+    
+    # Tile 3: Wer kommt wann?
+    with col3:
+        st.markdown("""
+        <div class="tile-card" style="background: linear-gradient(135deg, #1565C0 0%, #42A5F5 100%); color: white;">
+            <h2 style="color: white;">📅</h2>
+            <p style="font-size: 1.3em; font-weight: bold; color: white;">Wer kommt wann?</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("👥 Zur Anwesenheit", key="attendance_btn", use_container_width=True):
+            st.session_state['current_page'] = 'attendance'
+            st.rerun()
+    
+    # Tile 4: Adventskalender
+    with col4:
+        st.markdown("""
+        <div class="tile-card" style="background: linear-gradient(135deg, #F57C00 0%, #FFB74D 100%); color: white;">
+            <h2 style="color: white;">🎄</h2>
+            <p style="font-size: 1.3em; font-weight: bold; color: white;">Adventskalender</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🎅 Zum Kalender", key="advent_btn", use_container_width=True):
+            st.session_state['current_page'] = 'advent'
+            st.rerun()
+
+
+def countdown_page():
+    """Display detailed Christmas countdown page."""
+    if st.button("⬅️ Zurück zur Übersicht"):
+        st.session_state['current_page'] = 'dashboard'
+        st.rerun()
+    
+    st.title("� Countdown bis Heiligabend 🎄")
+    
     today = datetime.date.today()
     christmas = datetime.date(today.year, 12, 24)
     if today > christmas:
@@ -150,17 +346,46 @@ def main_app():
     days_until_christmas = (christmas - today).days
     
     st.markdown(f"""
-    <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; margin-bottom: 30px;'>
-        <h1 style='color: white; font-size: 3em; margin: 0;'>🎅 {days_until_christmas} 🎄</h1>
-        <h2 style='color: white; margin: 10px 0 0 0;'>{'Tage bis Heiligabend!' if days_until_christmas != 1 else 'Tag bis Heiligabend!'}</h2>
+    <div style='text-align: center; padding: 60px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                border-radius: 15px; margin: 30px 0;'>
+        <h1 style='color: white; font-size: 6em; margin: 0;'>🎅 {days_until_christmas} 🎄</h1>
+        <h2 style='color: white; margin: 20px 0 0 0; font-size: 2em;'>
+            {'Tage bis Heiligabend!' if days_until_christmas != 1 else 'Tag bis Heiligabend!'}
+        </h2>
+        <p style='color: white; margin-top: 20px; font-size: 1.2em;'>
+            {christmas.strftime('%A, %d. %B %Y')}
+        </p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Additional countdown information
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        hours_until = days_until_christmas * 24
+        st.metric("Stunden", f"{hours_until:,}")
+    
+    with col2:
+        minutes_until = days_until_christmas * 24 * 60
+        st.metric("Minuten", f"{minutes_until:,}")
+    
+    with col3:
+        seconds_until = days_until_christmas * 24 * 60 * 60
+        st.metric("Sekunden", f"{seconds_until:,}")
+    
+    st.markdown("---")
+    st.markdown("### 🎄 Die schönste Zeit des Jahres steht bevor!")
+    st.write("Nutze die Wunschliste, um deine Geschenkwünsche zu teilen und die Planung für die Feiertage zu koordinieren.")
 
-    # Load data into session state if not already present
-    if 'data' not in st.session_state:
-        st.session_state['data'] = load_data()
-    if 'edit_wish_id' not in st.session_state:
-        st.session_state['edit_wish_id'] = None
+
+def wishlist_page():
+    """Display the wishlist page."""
+    
+    if st.button("⬅️ Zurück zur Übersicht"):
+        st.session_state['current_page'] = 'dashboard'
+        st.rerun()
+    
+    st.title("🎁 Wunschliste")
 
     # Define columns for layout
     col1, col2 = st.columns(2)
@@ -172,7 +397,7 @@ def main_app():
             
             edit_mode = st.session_state.edit_wish_id is not None
             wish_to_edit = next((w for w in st.session_state.data if w['id'] == st.session_state.edit_wish_id), None) if edit_mode else None
-            is_suggestion = wish_to_edit and wish_to_edit.get('type') == 'suggestion' if wish_to_edit else False
+            is_suggestion = (wish_to_edit and wish_to_edit.get('type') == 'suggestion') if wish_to_edit else False
 
             with st.form("wish_form"):
                 if is_suggestion:
@@ -180,7 +405,7 @@ def main_app():
                 else:
                     st.subheader("Neuen Wunsch hinzufügen" if not edit_mode else "Wunsch bearbeiten")
                 
-                if is_suggestion:
+                if is_suggestion and wish_to_edit:
                     # Editing a suggestion - show suggestion fields
                     wish_name = st.text_input("Geschenkidee", value=wish_to_edit.get("wish_name", ""))
                     wish_desc = st.text_area("Beschreibung / Warum ist das eine gute Idee?", value=wish_to_edit.get("description", ""))
@@ -826,6 +1051,318 @@ def main_app():
                         st.markdown(f"**Noch offen: {user_outstanding:.2f}€**")
                 else:
                     st.info(f"{user} hat noch keine sichtbaren Geschenke als gekauft markiert.")
+
+
+def meal_planning_page():
+    """Display the meal planning page with voting."""
+    
+    if st.button("⬅️ Zurück zur Übersicht"):
+        st.session_state['current_page'] = 'dashboard'
+        st.rerun()
+    
+    st.title("🍽️ Essensplanung für die Weihnachtsfeiertage")
+    
+    # Define the days
+    days = [
+        {"date": "2025-12-23", "name": "23. Dezember", "emoji": "🎄"},
+        {"date": "2025-12-24", "name": "Heiligabend (24.12.)", "emoji": "🎄"},
+        {"date": "2025-12-25", "name": "1. Weihnachtstag (25.12.)", "emoji": "🎅"},
+        {"date": "2025-12-26", "name": "2. Weihnachtstag (26.12.)", "emoji": "🎁"}
+    ]
+    
+    for day in days:
+        st.subheader(f"{day['emoji']} {day['name']}")
+        
+        # Initialize meal data for this day if not exists
+        day_key = day['date']
+        if 'meals' not in st.session_state.planning_data:
+            st.session_state.planning_data['meals'] = {}
+        
+        if day_key not in st.session_state.planning_data['meals']:
+            st.session_state.planning_data['meals'][day_key] = {
+                "proposals": [],
+                "votes": {},
+                "responsible": None,
+                "notes": ""
+            }
+        
+        meal_data = st.session_state.planning_data['meals'][day_key]
+        
+        # Ensure meal_data has all required keys
+        if 'proposals' not in meal_data:
+            meal_data['proposals'] = []
+        if 'votes' not in meal_data:
+            meal_data['votes'] = {}
+        
+        # Add new proposal
+        with st.expander(f"💡 Neuer Essensvorschlag für {day['name']}"):
+            with st.form(f"meal_form_{day_key}"):
+                proposal_name = st.text_input("Essensidee (z.B. Gans, Raclette, Fondue...)")
+                proposal_desc = st.text_area("Beschreibung / Notizen", placeholder="z.B. Wer macht was, Zutaten...")
+                responsible = st.selectbox("Wer kümmert sich?", [""] + ALL_USERS, key=f"resp_{day_key}")
+                
+                if st.form_submit_button("➕ Vorschlag hinzufügen"):
+                    if proposal_name:
+                        new_proposal = {
+                            "id": str(uuid.uuid4()),
+                            "name": proposal_name,
+                            "description": proposal_desc,
+                            "proposed_by": st.session_state['username'],
+                            "responsible": responsible if responsible else None,
+                            "created_at": datetime.datetime.now().isoformat()
+                        }
+                        meal_data["proposals"].append(new_proposal)
+                        save_planning_data(st.session_state.planning_data)
+                        st.success(f"✓ Vorschlag '{proposal_name}' hinzugefügt!")
+                        st.rerun()
+        
+        # Display proposals and voting
+        if not meal_data["proposals"]:
+            st.info("Noch keine Essensvorschläge für diesen Tag.")
+        else:
+            st.write("**Abstimmung - Was soll es zu essen geben?**")
+            
+            for proposal in meal_data["proposals"]:
+                with st.container(border=True):
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    
+                    with col1:
+                        st.write(f"**{proposal['name']}**")
+                        if proposal.get('description'):
+                            st.write(f"_{proposal['description']}_")
+                        st.caption(f"Vorgeschlagen von {proposal['proposed_by']}")
+                        if proposal.get('responsible'):
+                            st.caption(f"👨‍🍳 Verantwortlich: {proposal['responsible']}")
+                    
+                    with col2:
+                        # Count votes
+                        votes = meal_data['votes'].get(proposal['id'], [])
+                        vote_count = len(votes)
+                        st.metric("Stimmen", vote_count)
+                        if votes:
+                            st.caption(f"👍 {', '.join(votes)}")
+                    
+                    with col3:
+                        # Vote button
+                        user_voted = st.session_state['username'] in votes
+                        if user_voted:
+                            if st.button("❌ Zurückziehen", key=f"unvote_{proposal['id']}"):
+                                meal_data['votes'][proposal['id']].remove(st.session_state['username'])
+                                save_planning_data(st.session_state.planning_data)
+                                st.rerun()
+                        else:
+                            if st.button("👍 Dafür", key=f"vote_{proposal['id']}"):
+                                if proposal['id'] not in meal_data['votes']:
+                                    meal_data['votes'][proposal['id']] = []
+                                meal_data['votes'][proposal['id']].append(st.session_state['username'])
+                                save_planning_data(st.session_state.planning_data)
+                                st.rerun()
+                        
+                        # Delete button for proposal creator
+                        if proposal['proposed_by'] == st.session_state['username']:
+                            if st.button("🗑️", key=f"del_prop_{proposal['id']}"):
+                                meal_data['proposals'] = [p for p in meal_data['proposals'] if p['id'] != proposal['id']]
+                                if proposal['id'] in meal_data['votes']:
+                                    del meal_data['votes'][proposal['id']]
+                                save_planning_data(st.session_state.planning_data)
+                                st.rerun()
+        
+        st.divider()
+
+
+def attendance_page():
+    """Display the attendance tracking page."""
+    
+    if st.button("⬅️ Zurück zur Übersicht"):
+        st.session_state['current_page'] = 'dashboard'
+        st.rerun()
+    
+    st.title("📅 Wer kommt wann?")
+    
+    st.write("Hier könnt ihr eintragen, wer an welchen Tagen dabei ist.")
+    
+    # Define the days
+    days = [
+        {"date": "2025-12-23", "name": "23. Dezember (Montag)"},
+        {"date": "2025-12-24", "name": "24. Dezember (Heiligabend)"},
+        {"date": "2025-12-25", "name": "25. Dezember (1. Weihnachtstag)"},
+        {"date": "2025-12-26", "name": "26. Dezember (2. Weihnachtstag)"}
+    ]
+    
+    # Initialize attendance data
+    if 'attendance' not in st.session_state.planning_data:
+        st.session_state.planning_data['attendance'] = {}
+    
+    # Check if user has already submitted attendance
+    user_has_submitted = st.session_state['username'] in st.session_state.planning_data['attendance']
+    
+    # User's own attendance form
+    if user_has_submitted:
+        # Show edit button instead of form
+        st.subheader(f"✅ Deine Anwesenheit wurde gespeichert")
+        if st.button("✏️ Anwesenheit bearbeiten"):
+            # Clear the user's data to show form again
+            if 'edit_attendance' not in st.session_state:
+                st.session_state['edit_attendance'] = False
+            st.session_state['edit_attendance'] = not st.session_state.get('edit_attendance', False)
+            st.rerun()
+    
+    # Show form if user hasn't submitted OR is editing
+    if not user_has_submitted or st.session_state.get('edit_attendance', False):
+        st.subheader(f"📝 Deine Anwesenheit, {st.session_state['username']}")
+        
+        with st.form("attendance_form"):
+            st.write("An welchen Tagen bist du dabei?")
+            
+            user_attendance = {}
+            for day in days:
+                st.write(f"**{day['name']}**")
+                
+                # Get existing data
+                existing_days = st.session_state.planning_data['attendance'].get(st.session_state['username'], {}).get('days', {})
+                existing = existing_days.get(day['date'], {})
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                # Radio button for present/unsure/none selection
+                with col1:
+                    attendance_status = st.radio(
+                        "Status",
+                        ["Nicht dabei", "Anwesend", "Noch unsicher"],
+                        index=2 if existing.get('unsure') else (1 if existing.get('present') else 0),
+                        key=f"status_{day['date']}",
+                        label_visibility="collapsed",
+                        horizontal=False
+                    )
+                    present = attendance_status == "Anwesend"
+                    unsure = attendance_status == "Noch unsicher"
+                
+                with col2:
+                    # Show status emoji
+                    if present:
+                        st.write("✅")
+                    elif unsure:
+                        st.write("❓")
+                    else:
+                        st.write("❌")
+                
+                with col3:
+                    with_partner = st.checkbox("+ Partner", value=existing.get('with_partner', False), key=f"partner_{day['date']}", disabled=not present)
+                
+                with col4:
+                    overnight = st.checkbox("Übernachtung", value=existing.get('overnight', False), key=f"overnight_{day['date']}", disabled=not present)
+                
+                user_attendance[day['date']] = {
+                    "present": present,
+                    "unsure": unsure,
+                    "with_partner": with_partner if present else False,
+                    "overnight": overnight if present else False
+                }
+            
+            notes = st.text_area("Besondere Hinweise (Allergien, Diät-Wünsche, etc.)", 
+                                 value=st.session_state.planning_data['attendance'].get(st.session_state['username'], {}).get('notes', ''))
+            
+            col_save, col_cancel = st.columns(2)
+            with col_save:
+                submit_button = st.form_submit_button("💾 Speichern")
+            with col_cancel:
+                if user_has_submitted:  # Only show cancel if editing
+                    cancel_button = st.form_submit_button("❌ Abbrechen")
+                    if cancel_button:
+                        st.session_state['edit_attendance'] = False
+                        st.rerun()
+            
+            if submit_button:
+                st.session_state.planning_data['attendance'][st.session_state['username']] = {
+                    "days": user_attendance,
+                    "notes": notes,
+                    "updated_at": datetime.datetime.now().isoformat()
+                }
+                save_planning_data(st.session_state.planning_data)
+                st.session_state['edit_attendance'] = False
+                st.success("✓ Deine Anwesenheit wurde gespeichert!")
+                st.rerun()
+    
+    st.divider()
+    
+    # Overview of everyone's attendance
+    st.subheader("👥 Übersicht: Wer ist wann dabei?")
+    
+    if not st.session_state.planning_data['attendance']:
+        st.info("Noch niemand hat seine Anwesenheit eingetragen.")
+    else:
+        import pandas as pd
+        
+        for day in days:
+            st.write(f"**{day['name']}**")
+            
+            attendees = []
+            unsure_attendees = []
+            
+            for user, data in st.session_state.planning_data['attendance'].items():
+                day_data = data.get('days', {}).get(day['date'], {})
+                if day_data.get('present'):
+                    if day_data.get('unsure'):
+                        unsure_attendees.append(f"{user} ❓")
+                    else:
+                        partner_info = " (+Partner)" if day_data.get('with_partner') else ""
+                        overnight_info = " 🌙" if day_data.get('overnight') else ""
+                        attendees.append(f"{user}{partner_info}{overnight_info}")
+            
+            if attendees or unsure_attendees:
+                for attendee in attendees:
+                    st.write(f"✓ {attendee}")
+                for unsure in unsure_attendees:
+                    st.write(f"❓ {unsure}")
+            else:
+                st.caption("Noch niemand angemeldet für diesen Tag")
+            
+            st.write("")
+        
+        # Special notes
+        st.write("**📋 Besondere Hinweise:**")
+        for user, data in st.session_state.planning_data['attendance'].items():
+            if data.get('notes'):
+                st.write(f"**{user}:** {data['notes']}")
+
+
+def advent_calendar_page():
+    """Display the advent calendar page."""
+    
+    if st.button("⬅️ Zurück zur Übersicht"):
+        st.session_state['current_page'] = 'dashboard'
+        st.rerun()
+    
+    st.title("🎄 Adventskalender")
+    
+    st.info("🎅 Der Adventskalender wird bald freigeschaltet!")
+    
+    # Calculate current day
+    today = datetime.date.today()
+    december_1st = datetime.date(today.year, 12, 1)
+    christmas_eve = datetime.date(today.year, 12, 24)
+    
+    # Show advent calendar grid (1-24)
+    st.write("### 🎁 24 Türchen bis Heiligabend")
+    
+    # Create 4 rows with 6 doors each
+    for row in range(4):
+        cols = st.columns(6)
+        for col_idx, col in enumerate(cols):
+            day = row * 6 + col_idx + 1
+            with col:
+                # Check if door can be opened
+                door_date = datetime.date(today.year, 12, day)
+                can_open = today >= door_date
+                
+                if can_open:
+                    if st.button(f"🎁 {day}", key=f"door_{day}", use_container_width=True):
+                        st.toast(f"🎄 Türchen {day} geöffnet!")
+                else:
+                    st.button(f"🔒 {day}", key=f"door_{day}_locked", use_container_width=True, disabled=True)
+    
+    st.markdown("---")
+    st.write("💡 **Hinweis:** Jeden Tag wird ein neues Türchen freigeschaltet!")
 
 # --- App Entry Point ---
 if "authenticated" not in st.session_state:
