@@ -1335,15 +1335,105 @@ def advent_calendar_page():
     
     st.title("🎄 Adventskalender")
     
-    st.info("🎅 Der Adventskalender wird bald freigeschaltet!")
+    # Test mode toggle (only visible for development)
+    if 'test_mode' not in st.session_state:
+        st.session_state['test_mode'] = False
+    
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.checkbox("🧪 Test-Modus", value=st.session_state['test_mode'], 
+                      help="Im Test-Modus sind alle Türchen sofort verfügbar"):
+            st.session_state['test_mode'] = True
+        else:
+            st.session_state['test_mode'] = False
+    
+    # Get all image files from the images folder
+    images_folder = Path("images")
+    if images_folder.exists():
+        image_files = [f.name for f in images_folder.iterdir() 
+                      if f.is_file() and f.suffix.lower() in ['.jpg', '.jpeg', '.png'] 
+                      and not f.name.endswith('.~tmp')]
+        # Sort alphabetically for consistent ordering across all users
+        image_files.sort()
+    else:
+        image_files = []
+    
+    # Create a consistent random mapping of days to images using a fixed seed
+    # This ensures ALL users see the same image for the same day
+    import random
+    rng = random.Random(2025)  # Use separate Random instance with fixed seed
+    if len(image_files) >= 24:
+        shuffled_images = image_files.copy()
+        rng.shuffle(shuffled_images)  # Shuffle with fixed seed
+        day_to_image = {day: shuffled_images[day-1] for day in range(1, 25)}
+    else:
+        day_to_image = {}
+    
+    # Year-based photo captions with funny descriptions
+    year_captions = {
+        "2005": "Mama mit den Mädels",
+        "2006": "Emmy's Reaktion auf Omas Geschenk: 'Danke... aber nein danke!'",
+        "2007": "Lukas hatte damals schon mehr Style als heute!",
+        "2008": "Familien-Orchester in Action - Emmy sorgt für die 'besondere' Note!",
+        "2008-2": "Emmy kann nicht warten: Winteroutfit-Test im Wohnzimmer!",
+        "2009": "Lukas als Chef am Schneidebrett - hoffentlich nur das Essen!",
+        "2009-2": "Emmy als Engel - zumindest optisch! 😇",
+        "2010": "Die Mädels rocken Weihnachten - unplugged!",
+        "2011": "Hühott! Tim's Freude war SO groß, er vergaß die Hos'!",
+        "2011-2": "Neues Ski-Equipment? Ab auf die Couch-Piste!",
+        "2012": "Houston, wir haben einen Start: Tim's erster Flug!",
+        "2012-2": "Klein-Tim der Handwerker - die Werkbank hat (fast) überlebt! 🔨",
+        "2013": "Krisenzeiten 2013: Immerhin eine Rolle pro Person! 🧻",
+        "2014": "Daddy war Selfie-König bevor es cool war!",
+        "2015": "Es ist Krieg! Das große Nerf-Battle beginnt! 🎯",
+        "2016": "Aloha! Weihnachten trifft Hawaii-Style! 🌺",
+        "2017": "Tim + Autos = wahre Liebe! Vroom vroom! 🚗",
+        "2018": "Endlich! Tim darf auch ins Familien-Orchester!",
+        "2019": "Illinois repräsentiert! U-S-A! U-S-A!",
+        "2020": "Emmy's skeptischer Blick: 'Daddy, bitte nicht die Finger!'",
+        "2021": "Prost auf ein weiteres verrücktes Jahr! 🥂",
+        "2022": "Hola desde Business Class - Weihnachten mit Stil! ✈️",
+        "2023": "Team Weihnachten bereit zum Anpfiff - äh, Auspacken! ⚽",
+        "2024": "Frohe Weihnachten 2024 - Und das Abenteuer geht weiter! 🎄"
+    }
     
     # Calculate current day
     today = datetime.date.today()
     december_1st = datetime.date(today.year, 12, 1)
-    christmas_eve = datetime.date(today.year, 12, 24)
     
-    # Show advent calendar grid (1-24)
+    # Test mode: Allow testing with all doors unlocked
+    if st.session_state['test_mode']:
+        st.warning("🧪 **Test-Modus aktiviert** - Alle Türchen sind verfügbar!")
+        current_day = 24  # Unlock all doors in test mode
+    else:
+        # Check if we're in December
+        if today.month == 12 and today.day <= 24:
+            current_day = today.day
+            st.write(f"Heute ist der {today.day}. Dezember!")
+        else:
+            current_day = 0  # Outside of advent calendar period
+            days_until = (december_1st - today).days if december_1st > today else 0
+            if days_until > 0:
+                st.info(f"Der Adventskalender beginnt am 1. Dezember! Noch {days_until} Tage!")
+    
     st.write("### 🎁 24 Türchen bis Heiligabend")
+    st.write("✨ Jeden Tag ein Weihnachtsfoto aus vergangenen Jahren!")
+    
+    # Load user-specific opened doors from planning data
+    if 'advent_doors' not in st.session_state.planning_data:
+        st.session_state.planning_data['advent_doors'] = {}
+    
+    current_user = st.session_state['username']
+    if current_user not in st.session_state.planning_data['advent_doors']:
+        st.session_state.planning_data['advent_doors'][current_user] = []
+    
+    # Initialize session state for opened doors (for this user)
+    if 'opened_doors' not in st.session_state:
+        st.session_state['opened_doors'] = set(st.session_state.planning_data['advent_doors'][current_user])
+    
+    # In test mode, automatically open all 24 doors
+    if st.session_state['test_mode']:
+        st.session_state['opened_doors'] = set(range(1, 25))
     
     # Create 4 rows with 6 doors each
     for row in range(4):
@@ -1351,18 +1441,88 @@ def advent_calendar_page():
         for col_idx, col in enumerate(cols):
             day = row * 6 + col_idx + 1
             with col:
-                # Check if door can be opened
+                # Always calculate door_date for display purposes
                 door_date = datetime.date(today.year, 12, day)
-                can_open = today >= door_date
+                
+                # Check if door can be opened
+                if st.session_state['test_mode']:
+                    # In test mode, all doors can be opened
+                    can_open = True
+                else:
+                    # Normal mode: check if it's December and we've reached this day
+                    can_open = today >= door_date and today.month == 12
+                
+                is_opened = day in st.session_state['opened_doors']
                 
                 if can_open:
-                    if st.button(f"🎁 {day}", key=f"door_{day}", use_container_width=True):
-                        st.toast(f"🎄 Türchen {day} geöffnet!")
+                    if st.button(f"{'📖' if is_opened else '🎁'} {day}", 
+                               key=f"door_{day}", 
+                               use_container_width=True,
+                               type="primary" if is_opened else "secondary"):
+                        st.session_state['opened_doors'].add(day)
+                        # Save to planning data (persistent storage)
+                        st.session_state.planning_data['advent_doors'][current_user] = list(st.session_state['opened_doors'])
+                        save_planning_data(st.session_state.planning_data)
+                        st.rerun()
                 else:
-                    st.button(f"🔒 {day}", key=f"door_{day}_locked", use_container_width=True, disabled=True)
+                    st.button(f"🔒 {day}", key=f"door_{day}_locked", 
+                            use_container_width=True, disabled=True)
     
     st.markdown("---")
-    st.write("💡 **Hinweis:** Jeden Tag wird ein neues Türchen freigeschaltet!")
+    
+    # Display opened doors with their images
+    if st.session_state['opened_doors']:
+        st.subheader("🎄 Geöffnete Türchen")
+        
+        # Sort opened doors
+        opened_sorted = sorted(st.session_state['opened_doors'], reverse=True)
+        
+        # Display images in a grid (3 columns)
+        cols_per_row = 3
+        for idx, day in enumerate(opened_sorted):
+            if idx % cols_per_row == 0:
+                cols = st.columns(cols_per_row)
+            
+            if day in day_to_image:
+                image_path = images_folder / day_to_image[day]
+                
+                with cols[idx % cols_per_row]:
+                    try:
+                        # Extract year from filename if possible
+                        filename = day_to_image[day]
+                        year_match = filename.split('.')[0].split('-')[0]
+                        try:
+                            year = int(year_match)
+                            caption = f"🎄 Türchen {day} - Weihnachten {year}"
+                        except:
+                            caption = f"🎄 Türchen {day}"
+                        
+                        # Check if image file exists
+                        if image_path.exists():
+                            # Open image with PIL first to ensure it's valid
+                            img = Image.open(image_path)
+                            # Display image - use_container_width allows fullscreen expansion
+                            st.image(img, caption=caption, use_container_width=True)
+                            
+                            # Display year-specific funny caption
+                            # Extract year from filename (e.g., "2005", "2008-2", "2009-2")
+                            year_key = Path(filename).stem  # Gets filename without extension
+                            if year_key in year_captions:
+                                st.markdown(f"*{year_captions[year_key]}*")
+                        else:
+                            st.warning(f"Bild nicht gefunden: {filename}")
+                        
+                    except Exception as e:
+                        st.error(f"Bild konnte nicht geladen werden: {str(e)}")
+    else:
+        st.info("💡 **Hinweis:** Öffne ein Türchen, um ein Weihnachtsfoto zu sehen! Ab dem 1. Dezember wird jeden Tag ein neues Türchen freigeschaltet.")
+    
+    # Show hint if not in December yet
+    if today.month != 12:
+        st.warning("🎅 Der Adventskalender startet am 1. Dezember!")
+        days_until_december = (datetime.date(today.year, 12, 1) - today).days
+        if days_until_december > 0:
+            st.write(f"Noch **{days_until_december} Tage** bis zum Start!")
 
 # --- App Entry Point ---
 if "authenticated" not in st.session_state:
