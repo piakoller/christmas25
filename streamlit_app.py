@@ -15,8 +15,8 @@ from PIL import Image
 
 # Firebase imports (optional, only used if configured)
 try:
-    import firebase_admin
-    from firebase_admin import credentials, db
+    import firebase_admin  # type: ignore
+    from firebase_admin import credentials, db  # type: ignore
     FIREBASE_AVAILABLE = True
 except ImportError:
     FIREBASE_AVAILABLE = False
@@ -1335,18 +1335,6 @@ def advent_calendar_page():
     
     st.title("🎄 Adventskalender")
     
-    # Test mode toggle (only visible for development)
-    if 'test_mode' not in st.session_state:
-        st.session_state['test_mode'] = False
-    
-    col1, col2 = st.columns([3, 1])
-    with col2:
-        if st.checkbox("🧪 Test-Modus", value=st.session_state['test_mode'], 
-                      help="Im Test-Modus sind alle Türchen sofort verfügbar"):
-            st.session_state['test_mode'] = True
-        else:
-            st.session_state['test_mode'] = False
-    
     # Get all image files from the images folder
     images_folder = Path("images")
     if images_folder.exists():
@@ -1401,20 +1389,15 @@ def advent_calendar_page():
     today = datetime.date.today()
     december_1st = datetime.date(today.year, 12, 1)
     
-    # Test mode: Allow testing with all doors unlocked
-    if st.session_state['test_mode']:
-        st.warning("🧪 **Test-Modus aktiviert** - Alle Türchen sind verfügbar!")
-        current_day = 24  # Unlock all doors in test mode
+    # Check if we're in December
+    if today.month == 12 and today.day <= 24:
+        current_day = today.day
+        st.write(f"Heute ist der {today.day}. Dezember!")
     else:
-        # Check if we're in December
-        if today.month == 12 and today.day <= 24:
-            current_day = today.day
-            st.write(f"Heute ist der {today.day}. Dezember!")
-        else:
-            current_day = 0  # Outside of advent calendar period
-            days_until = (december_1st - today).days if december_1st > today else 0
-            if days_until > 0:
-                st.info(f"Der Adventskalender beginnt am 1. Dezember! Noch {days_until} Tage!")
+        current_day = 0  # Outside of advent calendar period
+        days_until = (december_1st - today).days if december_1st > today else 0
+        if days_until > 0:
+            st.info(f"Der Adventskalender beginnt am 1. Dezember! Noch {days_until} Tage!")
     
     st.write("### 🎁 24 Türchen bis Heiligabend")
     st.write("✨ Jeden Tag ein Weihnachtsfoto aus vergangenen Jahren!")
@@ -1431,10 +1414,6 @@ def advent_calendar_page():
     if 'opened_doors' not in st.session_state:
         st.session_state['opened_doors'] = set(st.session_state.planning_data['advent_doors'][current_user])
     
-    # In test mode, automatically open all 24 doors
-    if st.session_state['test_mode']:
-        st.session_state['opened_doors'] = set(range(1, 25))
-    
     # Create 4 rows with 6 doors each
     for row in range(4):
         cols = st.columns(6)
@@ -1444,13 +1423,8 @@ def advent_calendar_page():
                 # Always calculate door_date for display purposes
                 door_date = datetime.date(today.year, 12, day)
                 
-                # Check if door can be opened
-                if st.session_state['test_mode']:
-                    # In test mode, all doors can be opened
-                    can_open = True
-                else:
-                    # Normal mode: check if it's December and we've reached this day
-                    can_open = today >= door_date and today.month == 12
+                # Check if door can be opened (must be December and we've reached this day)
+                can_open = today >= door_date and today.month == 12
                 
                 is_opened = day in st.session_state['opened_doors']
                 
