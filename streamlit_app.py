@@ -1483,6 +1483,56 @@ def advent_calendar_page():
                             year_key = Path(filename).stem  # Gets filename without extension
                             if year_key in year_captions:
                                 st.markdown(f"*{year_captions[year_key]}*")
+                            
+                            # Initialize comments structure in planning_data
+                            if 'advent_comments' not in st.session_state.planning_data:
+                                st.session_state.planning_data['advent_comments'] = {}
+                            
+                            if str(day) not in st.session_state.planning_data['advent_comments']:
+                                st.session_state.planning_data['advent_comments'][str(day)] = []
+                            
+                            # Display existing comments
+                            comments = st.session_state.planning_data['advent_comments'][str(day)]
+                            if comments:
+                                st.markdown("---")
+                                st.markdown("**💬 Kommentare:**")
+                                for comment in comments:
+                                    comment_user = comment.get('user', 'Unbekannt')
+                                    comment_text = comment.get('text', '')
+                                    comment_time = comment.get('timestamp', '')
+                                    
+                                    # Format timestamp
+                                    try:
+                                        dt = datetime.datetime.fromisoformat(comment_time)
+                                        time_str = dt.strftime('%d.%m. %H:%M')
+                                    except:
+                                        time_str = ''
+                                    
+                                    st.markdown(f"**{comment_user}** {f'({time_str})' if time_str else ''}")
+                                    st.markdown(f"> {comment_text}")
+                            
+                            # Add new comment form
+                            st.markdown("---")
+                            with st.form(key=f"comment_form_{day}"):
+                                new_comment = st.text_area(
+                                    "💬 Kommentar hinzufügen:",
+                                    placeholder="Teile deine Gedanken zu diesem Foto...",
+                                    key=f"comment_input_{day}",
+                                    max_chars=500
+                                )
+                                if st.form_submit_button("📤 Kommentar posten"):
+                                    if new_comment and new_comment.strip():
+                                        comment_data = {
+                                            "user": st.session_state['username'],
+                                            "text": new_comment.strip(),
+                                            "timestamp": datetime.datetime.now().isoformat()
+                                        }
+                                        st.session_state.planning_data['advent_comments'][str(day)].append(comment_data)
+                                        save_planning_data(st.session_state.planning_data)
+                                        st.success("✅ Kommentar wurde gepostet!")
+                                        st.rerun()
+                                    else:
+                                        st.warning("⚠️ Bitte gib einen Kommentar ein!")
                         else:
                             st.warning(f"Bild nicht gefunden: {filename}")
                         
