@@ -121,13 +121,22 @@ def save_data(data: List[Dict[str, Any]]):
 
 def migrate_meal_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """Migrate old meal structure to new structure if needed."""
-    # Check if migration is needed (old structure exists but new doesn't)
-    if 'meals' in data and data['meals'] and 'meal_proposals' not in data:
+    # Initialize new structures if they don't exist
+    if 'meal_proposals' not in data:
         data['meal_proposals'] = []
+    if 'day_assignments' not in data:
         data['day_assignments'] = {}
-        
+    
+    # Check if migration is needed (old structure exists and has data)
+    if 'meals' in data and data['meals']:
         # Track which dishes we've already added (by name to avoid duplicates)
         seen_dishes = {}
+        
+        # First, check existing proposals to avoid duplicates
+        for existing_dish in data['meal_proposals']:
+            dish_name = existing_dish.get('name', '')
+            if dish_name:
+                seen_dishes[dish_name] = existing_dish['id']
         
         # Process old meal structure
         for day_date, day_data in data['meals'].items():
