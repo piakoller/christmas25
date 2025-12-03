@@ -1054,13 +1054,19 @@ def wishlist_page():
 
 
 def meal_planning_page():
-    """Display the meal planning page with voting."""
+    """Display the meal planning page with dish proposals and day assignments."""
     
     if st.button("⬅️ Zurück zur Übersicht"):
         st.session_state['current_page'] = 'dashboard'
         st.rerun()
     
     st.title("🍽️ Essensplanung für die Weihnachtsfeiertage")
+    
+    # Initialize meal planning data structure
+    if 'meal_proposals' not in st.session_state.planning_data:
+        st.session_state.planning_data['meal_proposals'] = []
+    if 'day_assignments' not in st.session_state.planning_data:
+        st.session_state.planning_data['day_assignments'] = {}
     
     # Define the days
     days = [
@@ -1070,104 +1076,153 @@ def meal_planning_page():
         {"date": "2025-12-26", "name": "2. Weihnachtstag (26.12.)", "emoji": "🎁"}
     ]
     
-    for day in days:
-        st.subheader(f"{day['emoji']} {day['name']}")
+    # Two columns layout
+    col_proposals, col_schedule = st.columns([1, 1])
+    
+    # Left column: Dish proposals
+    with col_proposals:
+        st.header("🍴 Gerichtsvorschläge")
         
-        # Initialize meal data for this day if not exists
-        day_key = day['date']
-        if 'meals' not in st.session_state.planning_data:
-            st.session_state.planning_data['meals'] = {}
-        
-        if day_key not in st.session_state.planning_data['meals']:
-            st.session_state.planning_data['meals'][day_key] = {
-                "proposals": [],
-                "votes": {},
-                "responsible": None,
-                "notes": ""
-            }
-        
-        meal_data = st.session_state.planning_data['meals'][day_key]
-        
-        # Ensure meal_data has all required keys
-        if 'proposals' not in meal_data:
-            meal_data['proposals'] = []
-        if 'votes' not in meal_data:
-            meal_data['votes'] = {}
-        
-        # Add new proposal
-        with st.expander(f"💡 Neuer Essensvorschlag für {day['name']}"):
-            with st.form(f"meal_form_{day_key}"):
-                proposal_name = st.text_input("Essensidee (z.B. Gans, Raclette, Fondue...)")
-                proposal_desc = st.text_area("Beschreibung / Notizen", placeholder="z.B. Wer macht was, Zutaten...")
-                responsible = st.selectbox("Wer kümmert sich?", [""] + ALL_USERS, key=f"resp_{day_key}")
+        # Add new dish proposal
+        with st.expander("➕ Neues Gericht vorschlagen", expanded=False):
+            with st.form("new_dish_form"):
+                dish_name = st.text_input("Gericht (z.B. Gans, Raclette, Fondue...)")
+                dish_desc = st.text_area("Beschreibung / Notizen", placeholder="z.B. Zutaten, Zubereitungshinweise...")
+                responsible = st.selectbox("Wer kümmert sich?", [""] + ALL_USERS)
                 
-                if st.form_submit_button("➕ Vorschlag hinzufügen"):
-                    if proposal_name:
-                        new_proposal = {
+                if st.form_submit_button("💾 Vorschlag speichern"):
+                    if dish_name:
+                        new_dish = {
                             "id": str(uuid.uuid4()),
-                            "name": proposal_name,
-                            "description": proposal_desc,
+                            "name": dish_name,
+                            "description": dish_desc,
                             "proposed_by": st.session_state['username'],
                             "responsible": responsible if responsible else None,
-                            "created_at": datetime.datetime.now().isoformat()
+                            "created_at": datetime.datetime.now().isoformat(),
+                            "votes": []
                         }
-                        meal_data["proposals"].append(new_proposal)
+                        st.session_state.planning_data['meal_proposals'].append(new_dish)
                         save_planning_data(st.session_state.planning_data)
-                        st.success(f"✓ Vorschlag '{proposal_name}' hinzugefügt!")
+                        st.success(f"✓ Gericht '{dish_name}' hinzugefügt!")
                         st.rerun()
+                    else:
+                        st.warning("⚠️ Bitte gib einen Gerichtsnamen ein!")
         
-        # Display proposals and voting
-        if not meal_data["proposals"]:
-            st.info("Noch keine Essensvorschläge für diesen Tag.")
+        # Display all dish proposals
+        if not st.session_state.planning_data['meal_proposals']:
+            st.info("Noch keine Gerichtsvorschläge vorhanden.")
         else:
-            st.write("**Abstimmung - Was soll es zu essen geben?**")
+            st.write("**Alle Gerichtsvorschläge:**")
+            st.caption("👍 Stimme für deine Favoriten ab!")
             
-            for proposal in meal_data["proposals"]:
+            for dish in st.session_state.planning_data['meal_proposals']:
                 with st.container(border=True):
-                    col1, col2, col3 = st.columns([3, 1, 1])
+                    col1, col2 = st.columns([3, 1])
                     
                     with col1:
-                        st.write(f"**{proposal['name']}**")
-                        if proposal.get('description'):
-                            st.write(f"_{proposal['description']}_")
-                        st.caption(f"Vorgeschlagen von {proposal['proposed_by']}")
-                        if proposal.get('responsible'):
-                            st.caption(f"👨‍🍳 Verantwortlich: {proposal['responsible']}")
+                        st.write(f"**{dish['name']}**")
+                        if dish.get('description'):
+                            st.write(f"_{dish['description']}_")
+                        st.caption(f"Vorgeschlagen von {dish['proposed_by']}")
+                        if dish.get('responsible'):
+                            st.caption(f"👨‍🍳 Verantwortlich: {dish['responsible']}")
                     
                     with col2:
-                        # Count votes
-                        votes = meal_data['votes'].get(proposal['id'], [])
+                        # Vote count
+                        votes = dish.get('votes', [])
                         vote_count = len(votes)
-                        st.metric("Stimmen", vote_count)
+                        st.metric("👍", vote_count)
                         if votes:
-                            st.caption(f"👍 {', '.join(votes)}")
-                    
-                    with col3:
+                            st.caption(f"{', '.join(votes)}")
+                        
                         # Vote button
                         user_voted = st.session_state['username'] in votes
                         if user_voted:
-                            if st.button("❌ Zurückziehen", key=f"unvote_{proposal['id']}"):
-                                meal_data['votes'][proposal['id']].remove(st.session_state['username'])
+                            if st.button("❌", key=f"unvote_dish_{dish['id']}", help="Stimme zurückziehen"):
+                                dish['votes'].remove(st.session_state['username'])
                                 save_planning_data(st.session_state.planning_data)
                                 st.rerun()
                         else:
-                            if st.button("👍 Dafür", key=f"vote_{proposal['id']}"):
-                                if proposal['id'] not in meal_data['votes']:
-                                    meal_data['votes'][proposal['id']] = []
-                                meal_data['votes'][proposal['id']].append(st.session_state['username'])
+                            if st.button("👍", key=f"vote_dish_{dish['id']}", help="Dafür stimmen"):
+                                dish['votes'].append(st.session_state['username'])
                                 save_planning_data(st.session_state.planning_data)
                                 st.rerun()
                         
-                        # Delete button for proposal creator
-                        if proposal['proposed_by'] == st.session_state['username']:
-                            if st.button("🗑️", key=f"del_prop_{proposal['id']}"):
-                                meal_data['proposals'] = [p for p in meal_data['proposals'] if p['id'] != proposal['id']]
-                                if proposal['id'] in meal_data['votes']:
-                                    del meal_data['votes'][proposal['id']]
+                        # Delete button for creator
+                        if dish['proposed_by'] == st.session_state['username']:
+                            if st.button("🗑️", key=f"del_dish_{dish['id']}", help="Löschen"):
+                                st.session_state.planning_data['meal_proposals'] = [
+                                    d for d in st.session_state.planning_data['meal_proposals'] 
+                                    if d['id'] != dish['id']
+                                ]
+                                # Remove from day assignments
+                                for day_date in st.session_state.planning_data['day_assignments']:
+                                    if st.session_state.planning_data['day_assignments'][day_date] == dish['id']:
+                                        st.session_state.planning_data['day_assignments'][day_date] = None
                                 save_planning_data(st.session_state.planning_data)
                                 st.rerun()
+    
+    # Right column: Day schedule
+    with col_schedule:
+        st.header("📅 Wann gibt es was?")
+        st.write("Ordne die Gerichte den Tagen zu:")
         
-        st.divider()
+        for day in days:
+            st.subheader(f"{day['emoji']} {day['name']}")
+            
+            day_key = day['date']
+            current_assignment = st.session_state.planning_data['day_assignments'].get(day_key)
+            
+            # Find current dish name
+            current_dish_name = None
+            if current_assignment:
+                for dish in st.session_state.planning_data['meal_proposals']:
+                    if dish['id'] == current_assignment:
+                        current_dish_name = dish['name']
+                        break
+            
+            # Show current assignment
+            if current_dish_name:
+                st.success(f"✅ **{current_dish_name}**")
+                
+                # Find responsible person
+                for dish in st.session_state.planning_data['meal_proposals']:
+                    if dish['id'] == current_assignment:
+                        if dish.get('responsible'):
+                            st.caption(f"👨‍🍳 Verantwortlich: {dish['responsible']}")
+                        if dish.get('description'):
+                            with st.expander("📝 Details"):
+                                st.write(dish['description'])
+                        break
+                
+                # Button to change assignment
+                if st.button("� Ändern", key=f"change_{day_key}"):
+                    st.session_state.planning_data['day_assignments'][day_key] = None
+                    save_planning_data(st.session_state.planning_data)
+                    st.rerun()
+            else:
+                # Show selection
+                dish_options = ["Noch nicht festgelegt"] + [d['name'] for d in st.session_state.planning_data['meal_proposals']]
+                
+                selected = st.selectbox(
+                    "Gericht auswählen:",
+                    dish_options,
+                    key=f"select_{day_key}",
+                    label_visibility="collapsed"
+                )
+                
+                if selected != "Noch nicht festgelegt":
+                    # Find dish ID
+                    for dish in st.session_state.planning_data['meal_proposals']:
+                        if dish['name'] == selected:
+                            if st.button("💾 Speichern", key=f"save_{day_key}"):
+                                st.session_state.planning_data['day_assignments'][day_key] = dish['id']
+                                save_planning_data(st.session_state.planning_data)
+                                st.success(f"✓ {selected} für {day['name']} eingeplant!")
+                                st.rerun()
+                            break
+            
+            st.divider()
 
 
 def attendance_page():
