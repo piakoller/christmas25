@@ -127,6 +127,11 @@ def migrate_meal_data(data: Dict[str, Any]) -> Dict[str, Any]:
     if 'day_assignments' not in data:
         data['day_assignments'] = {}
     
+    # Ensure all existing proposals have a category field
+    for dish in data.get('meal_proposals', []):
+        if 'category' not in dish:
+            dish['category'] = 'Hauptspeise'  # Default category for old dishes
+    
     # Check if migration is needed (old structure exists and has data)
     if 'meals' in data and data['meals']:
         # Track which dishes we've already added (by name to avoid duplicates)
@@ -150,6 +155,7 @@ def migrate_meal_data(data: Dict[str, Any]) -> Dict[str, Any]:
                         new_dish = {
                             "id": dish_id,
                             "name": dish_name,
+                            "category": "Hauptspeise",  # Default category for migrated dishes
                             "description": proposal.get('description', ''),
                             "proposed_by": proposal.get('proposed_by', ''),
                             "responsible": proposal.get('responsible', None),
@@ -169,6 +175,20 @@ def migrate_meal_data(data: Dict[str, Any]) -> Dict[str, Any]:
                         # Use the first proposal as the assignment (most relevant)
                         if day_date not in data['day_assignments']:
                             data['day_assignments'][day_date] = seen_dishes[dish_name]
+    
+    # Migrate old day_assignments structure (string dish_id) to new structure (dict with categories)
+    for day_date, assignment in list(data.get('day_assignments', {}).items()):
+        # Check if this is old format (string) instead of new format (dict)
+        if isinstance(assignment, str):
+            # Find the dish to get its category
+            dish_id = assignment
+            dish = next((d for d in data['meal_proposals'] if d['id'] == dish_id), None)
+            category = dish.get('category', 'Hauptspeise') if dish else 'Hauptspeise'
+            
+            # Convert to new format
+            data['day_assignments'][day_date] = {
+                category: [dish_id]
+            }
     
     return data
 
@@ -1141,7 +1161,16 @@ def meal_planning_page():
     if 'meal_proposals' not in st.session_state.planning_data:
         st.session_state.planning_data['meal_proposals'] = []
     if 'day_assignments' not in st.session_state.planning_data:
+        # New structure: day_assignments[date][category] = [dish_ids]
         st.session_state.planning_data['day_assignments'] = {}
+    
+    # Define categories with emojis
+    categories = {
+        "Vorspeise": "🥗",
+        "Hauptspeise": "🍖",
+        "Nachspeise": "🍰",
+        "Snacks": "🥨"
+    }
     
     # Define the days
     days = [
@@ -1162,6 +1191,7 @@ def meal_planning_page():
         with st.expander("➕ Neues Gericht vorschlagen", expanded=False):
             with st.form("new_dish_form"):
                 dish_name = st.text_input("Gericht (z.B. Gans, Raclette, Fondue...)")
+                category = st.selectbox("Kategorie", list(categories.keys()))
                 dish_desc = st.text_area("Beschreibung / Notizen", placeholder="z.B. Zutaten, Zubereitungshinweise...")
                 responsible = st.selectbox("Wer kümmert sich?", [""] + ALL_USERS)
                 
@@ -1170,6 +1200,7 @@ def meal_planning_page():
                         new_dish = {
                             "id": str(uuid.uuid4()),
                             "name": dish_name,
+                            "category": category,
                             "description": dish_desc,
                             "proposed_by": st.session_state['username'],
                             "responsible": responsible if responsible else None,
@@ -1178,50 +1209,57 @@ def meal_planning_page():
                         }
                         st.session_state.planning_data['meal_proposals'].append(new_dish)
                         save_planning_data(st.session_state.planning_data)
-                        st.success(f"✓ Gericht '{dish_name}' hinzugefügt!")
+                        st.success(f"✓ {category} '{dish_name}' hinzugefügt!")
                         st.rerun()
                     else:
                         st.warning("⚠️ Bitte gib einen Gerichtsnamen ein!")
         
-        # Display all dish proposals
+        # Display all dish proposals grouped by category
         if not st.session_state.planning_data['meal_proposals']:
             st.info("Noch keine Gerichtsvorschläge vorhanden.")
         else:
             st.write("**Alle Gerichtsvorschläge:**")
             st.caption("👍 Stimme für deine Favoriten ab!")
             
-            for dish in st.session_state.planning_data['meal_proposals']:
-                with st.container(border=True):
-                    col1, col2 = st.columns([3, 1])
+            # Group dishes by category
+            for cat_name, cat_emoji in categories.items():
+                dishes_in_category = [d for d in st.session_state.planning_data['meal_proposals'] if d.get('category') == cat_name]
+                
+                if dishes_in_category:
+                    st.markdown(f"### {cat_emoji} {cat_name}")
                     
-                    with col1:
-                        st.write(f"**{dish['name']}**")
-                        if dish.get('description'):
-                            st.write(f"_{dish['description']}_")
-                        st.caption(f"Vorgeschlagen von {dish['proposed_by']}")
-                        if dish.get('responsible'):
-                            st.caption(f"👨‍🍳 Verantwortlich: {dish['responsible']}")
-                    
-                    with col2:
-                        # Vote count
-                        votes = dish.get('votes', [])
-                        vote_count = len(votes)
-                        st.metric("👍", vote_count)
-                        if votes:
-                            st.caption(f"{', '.join(votes)}")
-                        
-                        # Vote button
-                        user_voted = st.session_state['username'] in votes
-                        if user_voted:
-                            if st.button("❌", key=f"unvote_dish_{dish['id']}", help="Stimme zurückziehen"):
-                                dish['votes'].remove(st.session_state['username'])
-                                save_planning_data(st.session_state.planning_data)
-                                st.rerun()
-                        else:
-                            if st.button("👍", key=f"vote_dish_{dish['id']}", help="Dafür stimmen"):
-                                dish['votes'].append(st.session_state['username'])
-                                save_planning_data(st.session_state.planning_data)
-                                st.rerun()
+                    for dish in dishes_in_category:
+                        with st.container(border=True):
+                            col1, col2 = st.columns([3, 1])
+                            
+                            with col1:
+                                st.write(f"**{dish['name']}**")
+                                if dish.get('description'):
+                                    st.write(f"_{dish['description']}_")
+                                st.caption(f"Vorgeschlagen von {dish['proposed_by']}")
+                                if dish.get('responsible'):
+                                    st.caption(f"👨‍🍳 Verantwortlich: {dish['responsible']}")
+                            
+                            with col2:
+                                # Vote count
+                                votes = dish.get('votes', [])
+                                vote_count = len(votes)
+                                st.metric("👍", vote_count)
+                                if votes:
+                                    st.caption(f"{', '.join(votes)}")
+                                
+                                # Vote button
+                                user_voted = st.session_state['username'] in votes
+                                if user_voted:
+                                    if st.button("❌", key=f"unvote_dish_{dish['id']}", help="Stimme zurückziehen"):
+                                        dish['votes'].remove(st.session_state['username'])
+                                        save_planning_data(st.session_state.planning_data)
+                                        st.rerun()
+                                else:
+                                    if st.button("👍", key=f"vote_dish_{dish['id']}", help="Dafür stimmen"):
+                                        dish['votes'].append(st.session_state['username'])
+                                        save_planning_data(st.session_state.planning_data)
+                                        st.rerun()
                         
                         # Delete button for creator
                         if dish['proposed_by'] == st.session_state['username']:
@@ -1240,62 +1278,69 @@ def meal_planning_page():
     # Right column: Day schedule
     with col_schedule:
         st.header("📅 Wann gibt es was?")
-        st.write("Ordne die Gerichte den Tagen zu:")
+        st.write("Ordne die Gerichte nach Kategorien den Tagen zu:")
         
         for day in days:
             st.subheader(f"{day['emoji']} {day['name']}")
             
             day_key = day['date']
-            current_assignment = st.session_state.planning_data['day_assignments'].get(day_key)
             
-            # Find current dish name
-            current_dish_name = None
-            if current_assignment:
-                for dish in st.session_state.planning_data['meal_proposals']:
-                    if dish['id'] == current_assignment:
-                        current_dish_name = dish['name']
-                        break
+            # Initialize day structure if not exists
+            if day_key not in st.session_state.planning_data['day_assignments']:
+                st.session_state.planning_data['day_assignments'][day_key] = {}
             
-            # Show current assignment
-            if current_dish_name:
-                st.success(f"✅ **{current_dish_name}**")
+            # For each category
+            for cat_name, cat_emoji in categories.items():
+                st.markdown(f"**{cat_emoji} {cat_name}:**")
                 
-                # Find responsible person
-                for dish in st.session_state.planning_data['meal_proposals']:
-                    if dish['id'] == current_assignment:
-                        if dish.get('responsible'):
-                            st.caption(f"👨‍🍳 Verantwortlich: {dish['responsible']}")
-                        if dish.get('description'):
-                            with st.expander("📝 Details"):
-                                st.write(dish['description'])
-                        break
+                # Get assigned dishes for this category
+                assigned_dishes = st.session_state.planning_data['day_assignments'][day_key].get(cat_name, [])
                 
-                # Button to change assignment
-                if st.button("� Ändern", key=f"change_{day_key}"):
-                    st.session_state.planning_data['day_assignments'][day_key] = None
-                    save_planning_data(st.session_state.planning_data)
-                    st.rerun()
-            else:
-                # Show selection
-                dish_options = ["Noch nicht festgelegt"] + [d['name'] for d in st.session_state.planning_data['meal_proposals']]
+                # Display assigned dishes
+                if assigned_dishes:
+                    for dish_id in assigned_dishes:
+                        # Find dish details
+                        dish = next((d for d in st.session_state.planning_data['meal_proposals'] if d['id'] == dish_id), None)
+                        if dish:
+                            col_dish, col_remove = st.columns([4, 1])
+                            with col_dish:
+                                st.write(f"✅ {dish['name']}")
+                                if dish.get('responsible'):
+                                    st.caption(f"👨‍🍳 {dish['responsible']}")
+                            with col_remove:
+                                if st.button("❌", key=f"remove_{day_key}_{cat_name}_{dish_id}"):
+                                    assigned_dishes.remove(dish_id)
+                                    save_planning_data(st.session_state.planning_data)
+                                    st.rerun()
                 
-                selected = st.selectbox(
-                    "Gericht auswählen:",
-                    dish_options,
-                    key=f"select_{day_key}",
-                    label_visibility="collapsed"
-                )
+                # Add new dish to category
+                dishes_for_category = [d for d in st.session_state.planning_data['meal_proposals'] if d.get('category') == cat_name]
                 
-                if selected != "Noch nicht festgelegt":
-                    # Find dish ID
-                    for dish in st.session_state.planning_data['meal_proposals']:
-                        if dish['name'] == selected:
-                            if st.button("💾 Speichern", key=f"save_{day_key}"):
-                                st.session_state.planning_data['day_assignments'][day_key] = dish['id']
+                if dishes_for_category:
+                    dish_names = ["➕ Hinzufügen..."] + [d['name'] for d in dishes_for_category]
+                    selected = st.selectbox(
+                        f"Gericht hinzufügen",
+                        dish_names,
+                        key=f"add_{day_key}_{cat_name}",
+                        label_visibility="collapsed"
+                    )
+                    
+                    if selected != "➕ Hinzufügen...":
+                        # Find selected dish
+                        selected_dish = next((d for d in dishes_for_category if d['name'] == selected), None)
+                        if selected_dish:
+                            # Add to assignments
+                            if cat_name not in st.session_state.planning_data['day_assignments'][day_key]:
+                                st.session_state.planning_data['day_assignments'][day_key][cat_name] = []
+                            
+                            if selected_dish['id'] not in st.session_state.planning_data['day_assignments'][day_key][cat_name]:
+                                st.session_state.planning_data['day_assignments'][day_key][cat_name].append(selected_dish['id'])
                                 save_planning_data(st.session_state.planning_data)
-                                st.success(f"✓ {selected} für {day['name']} eingeplant!")
                                 st.rerun()
-                            break
+                else:
+                    st.caption(f"_Keine {cat_name}-Vorschläge vorhanden_")
+                
+                st.write("")  # Spacing
             
             st.divider()
 
