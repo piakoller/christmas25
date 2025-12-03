@@ -119,14 +119,69 @@ def save_data(data: List[Dict[str, Any]]):
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 
+def migrate_meal_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Migrate old meal structure to new structure if needed."""
+    # Check if migration is needed (old structure exists but new doesn't)
+    if 'meals' in data and data['meals'] and 'meal_proposals' not in data:
+        data['meal_proposals'] = []
+        data['day_assignments'] = {}
+        
+        # Track which dishes we've already added (by name to avoid duplicates)
+        seen_dishes = {}
+        
+        # Process old meal structure
+        for day_date, day_data in data['meals'].items():
+            if 'proposals' in day_data and day_data['proposals']:
+                for proposal in day_data['proposals']:
+                    dish_name = proposal.get('dish_name', '')
+                    
+                    # If we haven't seen this dish yet, add it to proposals
+                    if dish_name and dish_name not in seen_dishes:
+                        dish_id = str(uuid.uuid4())
+                        new_dish = {
+                            "id": dish_id,
+                            "name": dish_name,
+                            "description": proposal.get('description', ''),
+                            "proposed_by": proposal.get('proposed_by', ''),
+                            "responsible": proposal.get('responsible', None),
+                            "created_at": proposal.get('created_at', datetime.datetime.now().isoformat()),
+                            "votes": []
+                        }
+                        
+                        # Migrate votes
+                        if 'votes' in day_data:
+                            new_dish['votes'] = list(day_data['votes'].keys())
+                        
+                        data['meal_proposals'].append(new_dish)
+                        seen_dishes[dish_name] = dish_id
+                    
+                    # Assign to day if it was the chosen/top proposal
+                    if dish_name in seen_dishes and len(day_data.get('proposals', [])) > 0:
+                        # Use the first proposal as the assignment (most relevant)
+                        if day_date not in data['day_assignments']:
+                            data['day_assignments'][day_date] = seen_dishes[dish_name]
+    
+    return data
+
+
 def load_planning_data() -> Dict[str, Any]:
     """Load planning data (meals, attendance) from Firebase or local file."""
+    data_migrated = False
     db_ref = _init_firebase_from_secrets()
     if db_ref:
         try:
             planning_ref = db_ref.child('planning')
             data = planning_ref.get()
             if data:
+                # Migrate old data structure if needed
+                old_data = data.copy()
+                data = migrate_meal_data(data)
+                # Check if migration happened
+                if 'meal_proposals' in data and 'meal_proposals' not in old_data:
+                    data_migrated = True
+                if data_migrated:
+                    # Save migrated data back to Firebase
+                    planning_ref.set(data)
                 return data
             return {"meals": {}, "attendance": {}}
         except Exception as e:
@@ -137,7 +192,18 @@ def load_planning_data() -> Dict[str, Any]:
     if planning_file.exists():
         try:
             with open(planning_file, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                # Migrate old data structure if needed
+                old_data = data.copy()
+                data = migrate_meal_data(data)
+                # Check if migration happened
+                if 'meal_proposals' in data and 'meal_proposals' not in old_data:
+                    data_migrated = True
+                if data_migrated:
+                    # Save migrated data back to file
+                    with open(planning_file, "w", encoding="utf-8") as fw:
+                        json.dump(data, fw, indent=4, ensure_ascii=False)
+                return data
         except (json.JSONDecodeError, FileNotFoundError):
             pass
     return {"meals": {}, "attendance": {}}
