@@ -1252,12 +1252,28 @@ def meal_planning_page():
                                 user_voted = st.session_state['username'] in votes
                                 if user_voted:
                                     if st.button("❌", key=f"unvote_dish_{dish['id']}", help="Stimme zurückziehen"):
-                                        dish['votes'].remove(st.session_state['username'])
+                                        # Find the dish in the original list and update it
+                                        for d in st.session_state.planning_data['meal_proposals']:
+                                            if d['id'] == dish['id']:
+                                                if 'votes' not in d:
+                                                    d['votes'] = []
+                                                if isinstance(d['votes'], list) and st.session_state['username'] in d['votes']:
+                                                    d['votes'].remove(st.session_state['username'])
+                                                break
                                         save_planning_data(st.session_state.planning_data)
                                         st.rerun()
                                 else:
                                     if st.button("👍", key=f"vote_dish_{dish['id']}", help="Dafür stimmen"):
-                                        dish['votes'].append(st.session_state['username'])
+                                        # Find the dish in the original list and update it
+                                        for d in st.session_state.planning_data['meal_proposals']:
+                                            if d['id'] == dish['id']:
+                                                if 'votes' not in d:
+                                                    d['votes'] = []
+                                                if not isinstance(d['votes'], list):
+                                                    d['votes'] = list(d['votes']) if d['votes'] else []
+                                                if st.session_state['username'] not in d['votes']:
+                                                    d['votes'].append(st.session_state['username'])
+                                                break
                                         save_planning_data(st.session_state.planning_data)
                                         st.rerun()
                         
