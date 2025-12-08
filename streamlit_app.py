@@ -293,8 +293,10 @@ def main_app():
         st.session_state['current_page'] = 'dashboard'
     
     # Sync current_page with URL query params for browser history support
-    query_params = st.query_params
-    url_page = query_params.get('page', 'dashboard')
+    try:
+        url_page = st.query_params.get('page', ['dashboard'])[0] if 'page' in st.query_params else 'dashboard'
+    except:
+        url_page = 'dashboard'
     
     # If URL changed (browser back/forward), update session state
     if url_page != st.session_state['current_page']:
