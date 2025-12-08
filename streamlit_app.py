@@ -36,6 +36,7 @@ def navigate_to(page: str):
     """Navigate to a page and update URL for browser history support."""
     st.session_state['current_page'] = page
     st.query_params['page'] = page
+    st.rerun()
 
 # --- Data Persistence (Firebase Realtime Database preferred, fallback to local JSON) ---
 
@@ -289,19 +290,23 @@ def main_app():
         st.session_state['edit_wish_id'] = None
     if 'planning_data' not in st.session_state:
         st.session_state['planning_data'] = load_planning_data()
-    if 'current_page' not in st.session_state:
-        st.session_state['current_page'] = 'dashboard'
-    
-    # Sync current_page with URL query params for browser history support
+    # Sync with URL first (for browser back/forward button)
     try:
-        url_page = st.query_params.get('page', ['dashboard'])[0] if 'page' in st.query_params else 'dashboard'
-    except:
-        url_page = 'dashboard'
+        if 'page' in st.query_params:
+            url_page = st.query_params['page']
+            if isinstance(url_page, list):
+                url_page = url_page[0] if url_page else 'dashboard'
+        else:
+            url_page = None
+    except Exception:
+        url_page = None
     
-    # If URL changed (browser back/forward), update session state
-    if url_page != st.session_state['current_page']:
+    # Initialize or sync current_page
+    if 'current_page' not in st.session_state:
+        st.session_state['current_page'] = url_page if url_page else 'dashboard'
+    elif url_page and url_page != st.session_state['current_page']:
+        # URL changed (browser back/forward) - update session state
         st.session_state['current_page'] = url_page
-        st.rerun()
     
     # Route to appropriate page
     if st.session_state['current_page'] == 'dashboard':
