@@ -31,6 +31,12 @@ SUPER_USERS = ["Dieter", "Gudrun"]
 DATA_FILE = Path("wunschliste.json")
 BUDGET_LIMIT = 1500.0  # Budget limit per user in euros
 
+# --- Helper Functions ---
+def navigate_to(page: str):
+    """Navigate to a page and update URL for browser history support."""
+    st.session_state['current_page'] = page
+    st.query_params['page'] = page
+
 # --- Data Persistence (Firebase Realtime Database preferred, fallback to local JSON) ---
 
 def _init_firebase_from_secrets() -> Optional[Any]:
@@ -286,6 +292,15 @@ def main_app():
     if 'current_page' not in st.session_state:
         st.session_state['current_page'] = 'dashboard'
     
+    # Sync current_page with URL query params for browser history support
+    query_params = st.query_params
+    url_page = query_params.get('page', 'dashboard')
+    
+    # If URL changed (browser back/forward), update session state
+    if url_page != st.session_state['current_page']:
+        st.session_state['current_page'] = url_page
+        st.rerun()
+    
     # Route to appropriate page
     if st.session_state['current_page'] == 'dashboard':
         dashboard_page()
@@ -369,7 +384,7 @@ def dashboard_page():
         </div>
         """, unsafe_allow_html=True)
         if st.button("🎄 Zum Countdown", key="countdown_btn", use_container_width=True):
-            st.session_state['current_page'] = 'countdown'
+            navigate_to('countdown')
             st.rerun()
     
     st.markdown("<br>", unsafe_allow_html=True)
@@ -386,7 +401,7 @@ def dashboard_page():
         </div>
         """, unsafe_allow_html=True)
         if st.button("📝 Zur Wunschliste", key="wishlist_btn", use_container_width=True):
-            st.session_state['current_page'] = 'wishlist'
+            navigate_to('wishlist')
             st.rerun()
     
     # Tile 2: Essensplanung
@@ -398,7 +413,7 @@ def dashboard_page():
         </div>
         """, unsafe_allow_html=True)
         if st.button("🍴 Zur Essensplanung", key="meals_btn", use_container_width=True):
-            st.session_state['current_page'] = 'meals'
+            navigate_to('meals')
             st.rerun()
     
     # Tile 3: Wer kommt wann?
@@ -410,7 +425,7 @@ def dashboard_page():
         </div>
         """, unsafe_allow_html=True)
         if st.button("👥 Zur Anwesenheit", key="attendance_btn", use_container_width=True):
-            st.session_state['current_page'] = 'attendance'
+            navigate_to('attendance')
             st.rerun()
     
     # Tile 4: Adventskalender
@@ -422,14 +437,14 @@ def dashboard_page():
         </div>
         """, unsafe_allow_html=True)
         if st.button("🎅 Zum Kalender", key="advent_btn", use_container_width=True):
-            st.session_state['current_page'] = 'advent'
+            navigate_to('advent')
             st.rerun()
 
 
 def countdown_page():
     """Display detailed Christmas countdown page."""
     if st.button("⬅️ Zurück zur Übersicht"):
-        st.session_state['current_page'] = 'dashboard'
+        navigate_to('dashboard')
         st.rerun()
     
     st.title("� Countdown bis Heiligabend 🎄")
@@ -477,7 +492,7 @@ def wishlist_page():
     """Display the wishlist page."""
     
     if st.button("⬅️ Zurück zur Übersicht"):
-        st.session_state['current_page'] = 'dashboard'
+        navigate_to('dashboard')
         st.rerun()
     
     st.title("🎁 Wunschliste")
@@ -1152,7 +1167,7 @@ def meal_planning_page():
     """Display the meal planning page with dish proposals and day assignments."""
     
     if st.button("⬅️ Zurück zur Übersicht"):
-        st.session_state['current_page'] = 'dashboard'
+        navigate_to('dashboard')
         st.rerun()
     
     st.title("🍽️ Essensplanung für die Weihnachtsfeiertage")
@@ -1365,7 +1380,7 @@ def attendance_page():
     """Display the attendance tracking page."""
     
     if st.button("⬅️ Zurück zur Übersicht"):
-        st.session_state['current_page'] = 'dashboard'
+        navigate_to('dashboard')
         st.rerun()
     
     st.title("📅 Wer kommt wann?")
@@ -1521,7 +1536,7 @@ def advent_calendar_page():
     """Display the advent calendar page."""
     
     if st.button("⬅️ Zurück zur Übersicht"):
-        st.session_state['current_page'] = 'dashboard'
+        navigate_to('dashboard')
         st.rerun()
     
     st.title("🎄 Adventskalender")
